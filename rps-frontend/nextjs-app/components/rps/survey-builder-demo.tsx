@@ -121,9 +121,9 @@ export function SurveyBuilderDemo({
   const [hasDownloadedLinks, setHasDownloadedLinks] = useState(false);
   const canEditQuestions = status !== "active";
   const isCreateMode = mode === "create";
-  const selectedCompanyName =
-    companies.find((company) => company.id === companyId)?.name?.trim() ?? "";
-  const trimmedTitle = title.trim();
+   const selectedCompanyName =
+     companies.find((company) => company.id === companyId)?.name?.trim() ?? "";
+   const trimmedTitle = (title ?? "").trim();
   const effectiveCampaignTitle = trimmedTitle;
   const isDateRangeInvalid = isEndDateBeforeStartDate(startDate, endDate);
   const canSaveCampaign =

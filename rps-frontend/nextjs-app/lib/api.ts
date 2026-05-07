@@ -93,7 +93,26 @@ function mergeJsonHeaders(initHeaders?: HeadersInit, body?: BodyInit | null) {
     headers.set("Content-Type", "application/json");
   }
 
+  // Automatically include CSRF token for non-GET requests if available
+  if (typeof document !== 'undefined' && 
+      initHeaders?.method !== 'GET' && 
+      initHeaders?.method !== 'HEAD' && 
+      initHeaders?.method !== 'OPTIONS') {
+    const csrfToken = getCookie('XSRF-TOKEN') || getCookie('_csrf');
+    if (csrfToken) {
+      headers.set('X-CSRF-Token', csrfToken);
+    }
+  }
+
   return headers;
+}
+
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
 }
 
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}) {

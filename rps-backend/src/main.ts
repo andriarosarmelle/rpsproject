@@ -6,6 +6,7 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import csurf from 'csurf';
 import { AppModule } from './app.module';
 import { WinstonLoggerService } from './common/winston-logger.service';
 
@@ -28,6 +29,10 @@ async function bootstrap() {
       },
     },
   }));
+
+  // CSRF protection - disable for API routes that don't use cookies for auth
+  // We'll enable it selectively for form-based submissions if needed
+  // app.use(csurf({ cookie: true }));
 
   // Rate limiting - stricter for auth endpoints
   const authLimiter = rateLimit({
