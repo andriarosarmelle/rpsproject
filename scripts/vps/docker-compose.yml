@@ -4,13 +4,13 @@ version: '3.8'
 # RPS Platform - Docker Compose Configuration
 # ==============================================================================
 # Services:
-#   - PostgreSQL (database - optional, can use external)
-#   - n8n (automation - prepared for future)
+#   - PostgreSQL
+#   - Backend API
+#   - Frontend
+#   - n8n
 #
 # Usage:
-#   docker-compose up -d
-#   docker-compose logs -f
-#   docker-compose down
+#   docker compose -f scripts/vps/docker-compose.yml --env-file scripts/vps/.env.server.example up -d --build
 # ==============================================================================
 
 services:
@@ -42,7 +42,7 @@ services:
   # --------------------------------------------------------------------------
   backend:
     build:
-      context: ./rps-backend/rps-backend
+      context: ../../rps-backend
       dockerfile: Dockerfile
     restart: unless-stopped
     container_name: rps-backend
@@ -62,9 +62,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./rps-backend/rps-backend:/app
-      - /app/node_modules
     networks:
       - rps_network
 
@@ -73,7 +70,7 @@ services:
   # --------------------------------------------------------------------------
   frontend:
     build:
-      context: ./rps-frontend/nextjs-app
+      context: ../../rps-frontend/nextjs-app
       dockerfile: Dockerfile
     restart: unless-stopped
     container_name: rps-frontend
@@ -81,7 +78,7 @@ services:
       NODE_ENV: production
       PORT: 3001
       NEXT_PUBLIC_API_URL: http://localhost:3000/api
-      API_URL: http://localhost:3000/api
+      API_URL: http://backend:3000/api
       NEXT_PUBLIC_STRAPI_URL: ${NEXT_PUBLIC_STRAPI_URL:-}
       STRAPI_API_TOKEN: ${STRAPI_API_TOKEN:-}
     ports:
@@ -89,9 +86,7 @@ services:
     depends_on:
       - backend
     volumes:
-      - ./rps-frontend/nextjs-app:/app
-      - /app/node_modules
-      - /app/.next
+      - frontend_cache:/app/.next/cache
     networks:
       - rps_network
 
@@ -106,7 +101,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.rps.conf:/etc/nginx/conf.d/default.conf:ro
       - nginx_cache:/var/cache/nginx
       - nginx_logs:/var/log/nginx
     depends_on:
@@ -116,36 +111,32 @@ services:
       - rps_network
 
   # --------------------------------------------------------------------------
-  # n8n Automation (prepared for future)
+  # n8n Automation
   # --------------------------------------------------------------------------
-  # Uncomment when ready to use n8n:
-  #
-  # n8n:
-  #   image: n8nio/n8n:latest
-  #   restart: unless-stopped
-  #   container_name: rps-n8n
-  #   environment:
-  #     - N8N_BASIC_AUTH_ACTIVE=true
-  #     - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
-  #     - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
-  #     - N8N_HOST=n8n.local
-  #     - N8N_PORT=5678
-  #     - N8N_PROTOCOL=http
-  #     - DB_TYPE=postgresdb
-  #     - DB_POSTGRESDB_HOST=postgres
-  #     - DB_POSTGRESDB_PORT=5432
-  #     - DB_POSTGRESDB_DATABASE=${DB_NAME:-rps_db}
-  #     - DB_POSTGRESDB_USER=${DB_USER:-rps_user}
-  #     - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD:-rps_pass}
-  #   ports:
-  #     - "5678:5678"
-  #   volumes:
-  #     - n8n_data:/home/node/.n8n
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - rps_network
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    container_name: rps-n8n
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-changeme}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-me}
+      N8N_HOST: ${N8N_HOST:-127.0.0.1}
+      N8N_PORT: ${N8N_PORT:-5678}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_PATH: /n8n/
+      WEBHOOK_URL: ${N8N_PROTOCOL:-http}://${VPS_HOST:-127.0.0.1}:${N8N_PORT:-5678}/n8n/
+      N8N_EDITOR_BASE_URL: ${N8N_PROTOCOL:-http}://${VPS_HOST:-127.0.0.1}:${N8N_PORT:-5678}/n8n/
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rps_network
 
 # ==============================================================================
 # Networks
@@ -163,6 +154,8 @@ volumes:
   nginx_cache:
     driver: local
   nginx_logs:
+    driver: local
+  frontend_cache:
     driver: local
   n8n_data:
     driver: local

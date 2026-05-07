@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "rps-backend",
-      cwd: "./rps-backend/rps-backend",
+      cwd: "./rps-backend",
       script: "./dist/main.js",
       interpreter: "node",
       env: {

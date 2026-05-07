@@ -1,5 +1,5 @@
 import { Controller, Get, Logger } from '@nestjs/common';
-import { AppDataSource } from '../database/data-source';
+import { Client } from 'pg';
 
 type HealthStatus = 'healthy' | 'unhealthy' | 'unavailable' | 'not-configured';
 
@@ -16,6 +16,26 @@ interface HealthCheck {
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);
 
+  private async checkDatabase(): Promise<boolean> {
+    const client = new Client({
+      host: process.env.DB_HOST ?? 'localhost',
+      port: Number(process.env.DB_PORT ?? 5432),
+      user: process.env.DB_USER ?? 'postgres',
+      password: process.env.DB_PASSWORD ?? 'postgres',
+      database: process.env.DB_NAME ?? 'rps_platform',
+      connectionTimeoutMillis: 5000,
+    });
+
+    await client.connect();
+
+    try {
+      await client.query('SELECT 1');
+      return true;
+    } finally {
+      await client.end();
+    }
+  }
+
   @Get()
   async getHealth(): Promise<HealthCheck> {
     const health: HealthCheck = {
@@ -29,7 +49,7 @@ export class HealthController {
 
     // Check database connectivity
     try {
-      const isConnected = AppDataSource.isInitialized && (await AppDataSource.initialize());
+      const isConnected = await this.checkDatabase();
       health.checks.database = isConnected ? 'healthy' : 'unhealthy';
     } catch (error) {
       this.logger.error('Database health check failed', error);

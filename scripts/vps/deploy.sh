@@ -48,7 +48,15 @@ echo "Commit: $COMMIT_SHA"
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/versions/node/v24.14.1/bin/node" ] && export PATH="$NVM_DIR/versions/node/v24.14.1/bin:$PATH"
+
+NODE_MAJOR="${NODE_MAJOR:-24}"
+if command -v nvm >/dev/null 2>&1; then
+    nvm use "$NODE_MAJOR" >/dev/null
+else
+    echo "ERROR: nvm is not installed or unavailable in this shell."
+    echo "Run scripts/vps/bootstrap-server.sh on the VPS first."
+    exit 1
+fi
 
 echo "Node version: $(node -v)"
 echo "npm version: $(npm -v)"
