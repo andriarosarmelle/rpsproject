@@ -1,5 +1,5 @@
 import { Controller, Get, Logger } from '@nestjs/common';
-import { Client } from 'pg';
+import { DataSource } from 'typeorm';
 
 type HealthStatus = 'healthy' | 'unhealthy' | 'unavailable' | 'not-configured';
 
@@ -15,26 +15,7 @@ interface HealthCheck {
 @Controller('health')
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);
-
-  private async checkDatabase(): Promise<boolean> {
-    const client = new Client({
-      host: process.env.DB_HOST ?? 'localhost',
-      port: Number(process.env.DB_PORT ?? 5432),
-      user: process.env.DB_USER ?? 'postgres',
-      password: process.env.DB_PASSWORD ?? 'postgres',
-      database: process.env.DB_NAME ?? 'rps_platform',
-      connectionTimeoutMillis: 5000,
-    });
-
-    await client.connect();
-
-    try {
-      await client.query('SELECT 1');
-      return true;
-    } finally {
-      await client.end();
-    }
-  }
+  constructor(private readonly dataSource: DataSource) {}
 
   @Get()
   async getHealth(): Promise<HealthCheck> {
@@ -49,8 +30,8 @@ export class HealthController {
 
     // Check database connectivity
     try {
-      const isConnected = await this.checkDatabase();
-      health.checks.database = isConnected ? 'healthy' : 'unhealthy';
+      await this.dataSource.query('SELECT 1');
+      health.checks.database = 'healthy';
     } catch (error) {
       this.logger.error('Database health check failed', error);
       health.checks.database = 'unhealthy';
@@ -59,25 +40,36 @@ export class HealthController {
     // Check n8n webhook endpoint (if configured)
     const n8nUrl = process.env.N8N_WEBHOOK_URL;
     if (n8nUrl) {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-        const response = await fetch(n8nUrl.replace(/\/[^/]*$/, '/healthz') || 'http://localhost:5678/healthz', {
-          method: 'GET',
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
+        timeout = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch(
+          n8nUrl.replace(/\/[^/]*$/, '/healthz') ||
+            'http://localhost:5678/healthz',
+          {
+            method: 'GET',
+            signal: controller.signal,
+          },
+        );
         health.checks.n8n = response.ok ? 'healthy' : 'unavailable';
       } catch {
         health.checks.n8n = 'unavailable';
+      } finally {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
       }
     } else {
       health.checks.n8n = 'not-configured';
     }
 
+    const n8nHealthRequired = process.env.N8N_HEALTH_REQUIRED === 'true';
     const overallHealthy =
       health.checks.database === 'healthy' &&
-      (health.checks.n8n === 'healthy' || health.checks.n8n === 'not-configured');
+      (!n8nHealthRequired ||
+        health.checks.n8n === 'healthy' ||
+        health.checks.n8n === 'not-configured');
 
     return {
       ...health,
