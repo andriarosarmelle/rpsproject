@@ -100,11 +100,9 @@ export class EmployeeService {
         take: limit,
       });
 
-      return employees.map((employee) => {
-        employee.responses =
-          employee.responses?.filter((response) => !response.deleted_at) ?? [];
-        return employee;
-      });
+      return employees
+        .filter((employee) => this.isReadableEmployee(employee))
+        .map((employee) => this.normalizeEmployeeForRead(employee));
     } catch (error) {
       throwPersistenceError(error, {
         defaultMessage: 'Failed to fetch employees',
@@ -123,10 +121,11 @@ export class EmployeeService {
         throw new NotFoundException(`Employee ${id} not found`);
       }
 
-      employee.responses =
-        employee.responses?.filter((response) => !response.deleted_at) ?? [];
+      if (!this.isReadableEmployee(employee)) {
+        throw new NotFoundException(`Employee ${id} not found`);
+      }
 
-      return employee;
+      return this.normalizeEmployeeForRead(employee);
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -351,5 +350,20 @@ export class EmployeeService {
         email: email.trim().toLowerCase(),
       })
       .getOne();
+  }
+
+  private isReadableEmployee(employee: Employee) {
+    return Boolean(!employee.deleted_at && employee.email?.trim());
+  }
+
+  private normalizeEmployeeForRead(employee: Employee) {
+    employee.first_name = employee.first_name?.trim() || 'Employe';
+    employee.last_name = employee.last_name?.trim() || '';
+    employee.department = employee.department?.trim() || 'Non renseigne';
+    employee.responses =
+      employee.responses?.filter((response) => !response.deleted_at) ?? [];
+    employee.status = employee.responses.length > 0 ? 'OK' : '';
+
+    return employee;
   }
 }

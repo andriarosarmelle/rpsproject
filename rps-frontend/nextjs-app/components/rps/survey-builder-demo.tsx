@@ -85,13 +85,16 @@ export function SurveyBuilderDemo({
   mode: SurveyBuilderMode;
 }) {
   const router = useRouter();
+  const initialCompanyId = getInitialCompanyId(initialData, mode);
   const [isPending, startTransition] = useTransition();
   const [companies, setCompanies] = useState(initialData.companies);
   const [campaigns, setCampaigns] = useState(initialData.campaigns);
-  const [campaignId, setCampaignId] = useState(initialData.campaignId);
-  const [companyId, setCompanyId] = useState(initialData.companyId);
+  const [campaignId, setCampaignId] = useState(
+    mode === "create" ? null : initialData.campaignId,
+  );
+  const [companyId, setCompanyId] = useState(initialCompanyId);
   const [newCompanyName, setNewCompanyName] = useState("");
-  const [status, setStatus] = useState(initialData.status);
+  const [status, setStatus] = useState(mode === "create" ? "draft" : initialData.status);
   const [title, setTitle] = useState(() => (mode === "create" ? "" : initialData.title));
   const [description, setDescription] = useState(() =>
     mode === "create" ? "" : initialData.description,
@@ -99,10 +102,12 @@ export function SurveyBuilderDemo({
   const [startDate, setStartDate] = useState(toDateInputValue(initialData.startDate));
   const [endDate, setEndDate] = useState(toDateInputValue(initialData.endDate));
   const [questions, setQuestions] = useState(
-    initialData.questions
-      .slice()
-      .sort((a, b) => a.orderIndex - b.orderIndex)
-      .map(ensureQuestionOptions),
+    mode === "create"
+      ? []
+      : initialData.questions
+          .slice()
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+          .map(ensureQuestionOptions),
   );
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,15 +126,18 @@ export function SurveyBuilderDemo({
   const [hasDownloadedLinks, setHasDownloadedLinks] = useState(false);
   const canEditQuestions = status !== "active";
   const isCreateMode = mode === "create";
-   const selectedCompanyName =
-     companies.find((company) => company.id === companyId)?.name?.trim() ?? "";
-   const trimmedTitle = (title ?? "").trim();
+  const selectedCompanyName =
+    companies.find((company) => company.id === companyId)?.name?.trim() ?? "";
+  const selectedCampaign = campaigns.find((campaign) => campaign.id === campaignId);
+  const campaignMatchesCompany =
+    !campaignId || !companyId || !selectedCampaign || selectedCampaign.companyId === companyId;
+  const trimmedTitle = (title ?? "").trim();
   const effectiveCampaignTitle = trimmedTitle;
   const isDateRangeInvalid = isEndDateBeforeStartDate(startDate, endDate);
   const canSaveCampaign =
     Boolean(companyId) && effectiveCampaignTitle.length >= 3 && !isDateRangeInvalid;
   const isSurveyReadyForImport = Boolean(
-    campaignId && companyId && status === "active",
+    campaignId && companyId && status === "active" && campaignMatchesCompany,
   );
   const hasImportedEmployees = Boolean(
     importSuccess && (importSuccess.count > 0 || importSuccess.participants.length > 0),
@@ -143,19 +151,21 @@ export function SurveyBuilderDemo({
   useEffect(() => {
     setCompanies(initialData.companies);
     setCampaigns(initialData.campaigns);
-    setCampaignId(initialData.campaignId);
-    setCompanyId(initialData.companyId);
+    setCampaignId(mode === "create" ? null : initialData.campaignId);
+    setCompanyId(getInitialCompanyId(initialData, mode));
     setNewCompanyName("");
-    setStatus(initialData.status);
+    setStatus(mode === "create" ? "draft" : initialData.status);
     setTitle(mode === "create" ? "" : initialData.title);
     setDescription(mode === "create" ? "" : initialData.description);
     setStartDate(toDateInputValue(initialData.startDate));
     setEndDate(toDateInputValue(initialData.endDate));
     setQuestions(
-      initialData.questions
-        .slice()
-        .sort((a, b) => a.orderIndex - b.orderIndex)
-        .map(ensureQuestionOptions),
+      mode === "create"
+        ? []
+        : initialData.questions
+            .slice()
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .map(ensureQuestionOptions),
     );
     setFeedback(null);
     setError(null);
@@ -236,6 +246,11 @@ export function SurveyBuilderDemo({
       (result) => {
         setCompanies((current) => [...current, result]);
         setCompanyId(result.id);
+        setCampaignId(null);
+        setStatus("draft");
+        setQuestions([]);
+        setImportSuccess(null);
+        setHasDownloadedLinks(false);
         setNewCompanyName("");
       },
     );
@@ -267,6 +282,15 @@ export function SurveyBuilderDemo({
 
   function handleCompanySelection(nextCompanyId: number) {
     setCompanyId(nextCompanyId);
+
+    if (mode === "create") {
+      setCampaignId(null);
+      setStatus("draft");
+      setQuestions([]);
+      setImportSuccess(null);
+      setHasDownloadedLinks(false);
+      return;
+    }
     
     // Filtrer les campagnes pour l'entreprise sélectionnée
     const companyCampaigns = campaigns.filter((c) => c.companyId === nextCompanyId);
@@ -337,6 +361,11 @@ export function SurveyBuilderDemo({
   function openImportModal() {
     if (!campaignId || !companyId) {
       setError("Enregistrez d'abord le sondage avec son entreprise avant d'importer les employés.");
+      return;
+    }
+
+    if (!campaignMatchesCompany) {
+      setError("Le sondage selectionne n'appartient pas a cette entreprise. Enregistrez ou selectionnez le bon sondage avant l'import.");
       return;
     }
 
@@ -454,7 +483,7 @@ export function SurveyBuilderDemo({
         return {
           Nom: String(nom).trim(),
           Prenom: String(prenom).trim(),
-          Email: String(email).trim(),
+          "Adresse courriel": String(email).trim(),
           Fonction: String(fonction).trim(),
         };
       });
@@ -491,29 +520,33 @@ export function SurveyBuilderDemo({
     }
   }
 
-  function copyToClipboard(text: string): Promise<void> {
+  async function copyToClipboard(text: string): Promise<boolean> {
     if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text);
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // Fall through to the textarea copy path below.
+      }
     }
 
-    return new Promise((resolve) => {
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      textArea.style.position = "fixed";
-      textArea.style.left = "-9999px";
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.readOnly = true;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
 
-      try {
-        document.execCommand("copy");
-      } catch {
-        // ignore fallback errors during demo flow
-      }
-
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
       document.body.removeChild(textArea);
-      resolve();
-    });
+    }
   }
 
   function copyAllLinks() {
@@ -522,8 +555,12 @@ export function SurveyBuilderDemo({
     }
 
     const links = importSuccess.participants.map((participant) => `${participant.name}: ${participant.link}`).join("\n");
-    copyToClipboard(links).then(() => {
-      setImportFeedback("Tous les liens ont été copiés dans le presse-papiers.");
+    copyToClipboard(links).then((copied) => {
+      setImportFeedback(
+        copied
+          ? "Tous les liens ont ete copies dans le presse-papiers."
+          : "La copie automatique n'est pas disponible dans ce navigateur. Telechargez la liste des liens.",
+      );
     });
   }
 
@@ -566,6 +603,11 @@ export function SurveyBuilderDemo({
   function handleImportEmployees() {
     if (!campaignId || !companyId) {
       setImportError("Enregistrez d'abord le sondage avant d'importer les employés.");
+      return;
+    }
+
+    if (!campaignMatchesCompany) {
+      setImportError("Le sondage selectionne n'appartient pas a cette entreprise. Enregistrez ou selectionnez le bon sondage avant l'import.");
       return;
     }
 
@@ -642,7 +684,6 @@ export function SurveyBuilderDemo({
           }
         }
 
-        console.error("Import error:", caughtError);
         setImportError(errorMessage);
       }
     });
@@ -1639,8 +1680,12 @@ export function SurveyBuilderDemo({
                         <SecondaryButton
                           className="w-full sm:w-auto px-3 sm:px-4 py-2"
                           onClick={() =>
-                            copyToClipboard(participant.link).then(() => {
-                              setImportFeedback(`Lien copié pour ${participant.name}.`);
+                            copyToClipboard(participant.link).then((copied) => {
+                              setImportFeedback(
+                                copied
+                                  ? `Lien copie pour ${participant.name}.`
+                                  : "La copie automatique n'est pas disponible dans ce navigateur. Telechargez la liste des liens.",
+                              );
                             })
                           }
                         >
@@ -1657,6 +1702,14 @@ export function SurveyBuilderDemo({
       ) : null}
     </div>
   );
+}
+
+function getInitialCompanyId(initialData: SurveyBuilderData, mode: SurveyBuilderMode) {
+  if (mode === "create") {
+    return initialData.companies[0]?.id ?? null;
+  }
+
+  return initialData.companyId;
 }
 
 function sanitizeOptions(options?: string[]) {
@@ -1682,6 +1735,44 @@ function validateCsvFormat(rawCsv: string): { valid: boolean; errors: string[]; 
     return { valid: false, errors, lineCount: 0 };
   }
 
+  const detectCsvDelimiter = (line: string) => {
+    const supportedDelimiters = [",", ";", "\t"] as const;
+    let bestDelimiter: (typeof supportedDelimiters)[number] =
+      supportedDelimiters[0];
+    let bestCount = -1;
+
+    for (const delimiter of supportedDelimiters) {
+      let count = 0;
+      let inQuotes = false;
+
+      for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+
+        if (char === '"') {
+          if (inQuotes && line[index + 1] === '"') {
+            index += 1;
+          } else {
+            inQuotes = !inQuotes;
+          }
+          continue;
+        }
+
+        if (!inQuotes && char === delimiter) {
+          count += 1;
+        }
+      }
+
+      if (count > bestCount) {
+        bestDelimiter = delimiter;
+        bestCount = count;
+      }
+    }
+
+    return bestDelimiter;
+  };
+
+  const delimiter = detectCsvDelimiter(lines[0]);
+
   // Parse headers (handle quoted CSV fields)
   const parseCsvLine = (line: string): string[] => {
     const result: string[] = [];
@@ -1698,7 +1789,7 @@ function validateCsvFormat(rawCsv: string): { valid: boolean; errors: string[]; 
         } else {
           inQuotes = !inQuotes;
         }
-      } else if (char === "," && !inQuotes) {
+      } else if (char === delimiter && !inQuotes) {
         result.push(current.trim());
         current = "";
       } else {

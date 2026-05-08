@@ -341,8 +341,10 @@ export class CampaignParticipantService {
 
       participant.completed_at = new Date();
       participant.status = CampaignParticipantStatus.COMPLETED;
+      participant.employee.status = 'OK';
 
       try {
+        await manager.getRepository(Employee).save(participant.employee);
         await participantRepository.save(participant);
       } catch (error) {
         throwPersistenceError(error, {
@@ -545,17 +547,23 @@ export class CampaignParticipantService {
 
           if (employeesToSave.length > 0) {
             // Save batch within a transaction
-            await this.employeeRepository.manager.transaction(async (transactionalEntityManager) => {
-              const savedBatch = await transactionalEntityManager.save(employeesToSave);
-              for (const employee of savedBatch) {
-                if (employee.email) {
-                  employeesByEmail.set(employee.email.toLowerCase(), employee);
+            await this.employeeRepository.manager.transaction(
+              async (transactionalEntityManager) => {
+                const savedBatch =
+                  await transactionalEntityManager.save(employeesToSave);
+                for (const employee of savedBatch) {
+                  if (employee.email) {
+                    employeesByEmail.set(
+                      employee.email.toLowerCase(),
+                      employee,
+                    );
+                  }
                 }
-              }
-              this.logger.log(
-                `[Import] Saved ${savedBatch.length} employees in batch`,
-              );
-            });
+                this.logger.log(
+                  `[Import] Saved ${savedBatch.length} employees in batch`,
+                );
+              },
+            );
           }
         } catch (error) {
           this.logger.error(

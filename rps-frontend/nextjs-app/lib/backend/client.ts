@@ -81,6 +81,29 @@ function logBackendWarning(message: string) {
   }
 }
 
+function getApiErrorMessage(body: string) {
+  if (!body.trim()) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(body) as { message?: unknown; error?: unknown };
+    const message = Array.isArray(parsed.message)
+      ? parsed.message.join("; ")
+      : typeof parsed.message === "string"
+        ? parsed.message
+        : null;
+
+    if (message) {
+      return message;
+    }
+
+    return typeof parsed.error === "string" ? parsed.error : null;
+  } catch {
+    return body.slice(0, 240);
+  }
+}
+
 async function backendFetch<T>(path: string, init?: RequestInit) {
   const backendUrl = getRequiredBackendUrl();
   const controller = new AbortController();
@@ -111,10 +134,15 @@ async function backendFetch<T>(path: string, init?: RequestInit) {
 
     if (error instanceof ApiResponseError) {
       const errorPreview = error.body ? ` - ${error.body.slice(0, 180)}` : "";
+      const apiMessage = getApiErrorMessage(error.body);
       logBackendWarning(
         `Request failed ${error.status} ${error.statusText} on ${path}${errorPreview}`
       );
-      throw new Error(`Backend request failed: ${error.status} ${error.statusText}`);
+      throw new Error(
+        apiMessage
+          ? `Backend request failed: ${error.status} ${error.statusText} - ${apiMessage}`
+          : `Backend request failed: ${error.status} ${error.statusText}`,
+      );
     }
 
     const isNetworkFailure =

@@ -32,6 +32,7 @@ export type BackendEmployee = {
   last_name: string;
   email: string;
   phone: string | null;
+  status: string;
   department: string | null;
   survey_token: string | null;
   created_at: string;

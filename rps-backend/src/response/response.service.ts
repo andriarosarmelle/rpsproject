@@ -39,7 +39,9 @@ export class ResponseService {
     });
 
     try {
-      return await this.responseRepository.save(response);
+      const savedResponse = await this.responseRepository.save(response);
+      await this.markEmployeeAsResponded(employee);
+      return savedResponse;
     } catch (error) {
       throwPersistenceError(error, {
         defaultMessage: 'Failed to create response',
@@ -131,6 +133,7 @@ export class ResponseService {
 
     try {
       await this.responseRepository.save(response);
+      await this.syncEmployeeResponseStatus(response.employee);
       return { deleted: true, id, deleted_at: response.deleted_at };
     } catch (error) {
       throwPersistenceError(error, {
@@ -181,5 +184,31 @@ export class ResponseService {
         'This employee has already answered this question',
       );
     }
+  }
+
+  private async markEmployeeAsResponded(employee: Employee) {
+    if (employee.status === 'OK') {
+      return;
+    }
+
+    employee.status = 'OK';
+    await this.employeeRepository.save(employee);
+  }
+
+  private async syncEmployeeResponseStatus(employee: Employee) {
+    const activeResponseCount = await this.responseRepository.count({
+      where: {
+        employee: { id: employee.id },
+        deleted_at: IsNull(),
+      },
+    });
+    const nextStatus = activeResponseCount > 0 ? 'OK' : '';
+
+    if (employee.status === nextStatus) {
+      return;
+    }
+
+    employee.status = nextStatus;
+    await this.employeeRepository.save(employee);
   }
 }

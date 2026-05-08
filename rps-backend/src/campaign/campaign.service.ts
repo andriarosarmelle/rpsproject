@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { SurveyResponse } from '../response/response.entity';
 import { throwPersistenceError } from '../common/database-error.util';
 import { Company } from '../company/company.entity';
@@ -55,7 +55,9 @@ export class CampaignService {
     });
 
     try {
-      return await this.campaignRepository.save(campaign);
+      return this.normalizeCampaignForRead(
+        await this.campaignRepository.save(campaign),
+      );
     } catch (error) {
       throwPersistenceError(error, {
         defaultMessage: 'Failed to create campaign',
@@ -70,11 +72,13 @@ export class CampaignService {
     }
   }
 
-  findAll() {
-    return this.campaignRepository.find({
+  async findAll() {
+    const campaigns = await this.campaignRepository.find({
       order: { id: 'ASC' },
       relations: { company: true, questions: true, reports: true },
     });
+
+    return campaigns.map((campaign) => this.normalizeCampaignForRead(campaign));
   }
 
   async findOne(id: number) {
@@ -87,7 +91,7 @@ export class CampaignService {
       throw new NotFoundException(`Campaign ${id} not found`);
     }
 
-    return campaign;
+    return this.normalizeCampaignForRead(campaign);
   }
 
   async update(id: number, updateCampaignDto: UpdateCampaignDto) {
@@ -232,6 +236,10 @@ export class CampaignService {
             campaign: { id: campaignId },
           },
         },
+        question: {
+          campaign: { id: campaignId },
+        },
+        deleted_at: IsNull(),
       },
       relations: ['employee', 'question'],
       order: { employee: { id: 'ASC' }, question: { order_index: 'ASC' } },
@@ -251,6 +259,7 @@ export class CampaignService {
           'Nom et Prenom':
             `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
           Fonction: employee.department || '',
+          Statut: 'OK',
         };
         employeeMap.set(employee.id, row);
       }
@@ -276,6 +285,12 @@ export class CampaignService {
       campaignId,
       companyName,
     );
+
+    if (employeesData.length === 0) {
+      throw new BadRequestException(
+        'Aucune reponse exploitable n’est disponible pour cette campagne.',
+      );
+    }
 
     // Construire le payload au format attendu par n8n (identique au frontend)
     const payload = {
@@ -327,5 +342,16 @@ export class CampaignService {
         'Campaign end date must be greater than or equal to start date',
       );
     }
+  }
+
+  private normalizeCampaignForRead(campaign: Campaign) {
+    campaign.name = campaign.name?.trim() || `Campagne ${campaign.id}`;
+
+    if (campaign.company) {
+      campaign.company.name =
+        campaign.company.name?.trim() || `Entreprise ${campaign.company.id}`;
+    }
+
+    return campaign;
   }
 }
