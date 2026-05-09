@@ -21,6 +21,7 @@
     "typeorm": "typeorm-ts-node-commonjs -d src/database/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate src/database/migrations/AutoMigration",
     "migration:run": "ts-node -r tsconfig-paths/register src/database/migrate.ts",
+    "migration:run:prod": "node dist/database/migrate.js",
     "migration:revert": "npm run typeorm -- migration:revert",
     "seed": "ts-node -r tsconfig-paths/register src/database/seed.ts"
   },

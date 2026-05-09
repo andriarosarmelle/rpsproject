@@ -4,133 +4,140 @@ set -euo pipefail
 
 # Usage: ./scripts/vps/deploy.sh [branch]
 TARGET_BRANCH="${1:-main}"
-COMMIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo manual)"
+COMMIT_SHA="${GITHUB_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo manual)}"
 
 if [ "$TARGET_BRANCH" = "main" ]; then
-    ENV="rps_dev"
+  ENV="rps_dev"
 else
-    ENV="development"
+  ENV="development"
 fi
 
-APP_DIR="$HOME/rps-$ENV"
-N8N_DIR="$HOME/n8n"
-REPO_URL="${REPO_URL:-https://github.com/AzazelSloth/rpsproject.git}"
+APP_DIR="${APP_DIR:-$HOME/rps-$ENV}"
+REPO_URL="${REPO_URL:-git@github.com:AzazelSloth/rpsproject.git}"
 VPS_HOST="${VPS_HOST:-127.0.0.1}"
+DOMAIN_NAME="${DOMAIN_NAME:-}"
+PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-}"
 
-DB_HOST="${DB_HOST:-localhost}"
+DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
-DB_USER="${DB_USER:-postgres}"
-DB_PASSWORD="${DB_PASSWORD:-postgres}"
-DB_NAME="${DB_NAME:-rps_platform}"
-JWT_SECRET="${JWT_SECRET:-change-me}"
-AUTH_DISABLED="${AUTH_DISABLED:-true}"
-
-# Admin registration defaults
-# Note: ADMIN_ALLOWED_EMAILS should be provided by the deployment environment (e.g. GitHub Secrets).
-# If unset, leave empty to avoid embedding secrets in the repo or script.
+DB_USER="${DB_USER:-rps_user}"
+DB_PASSWORD="${DB_PASSWORD:-rps_pass}"
+DB_NAME="${DB_NAME:-rps_db}"
+JWT_SECRET="${JWT_SECRET:-}"
+DB_SYNCHRONIZE="${DB_SYNCHRONIZE:-false}"
+DB_LOGGING="${DB_LOGGING:-false}"
+AUTH_DISABLED="${AUTH_DISABLED:-false}"
 ADMIN_ALLOWED_EMAILS="${ADMIN_ALLOWED_EMAILS:-}"
 ADMIN_BOOTSTRAP_EMAILS="${ADMIN_BOOTSTRAP_EMAILS:-}"
+ADMIN_BOOTSTRAP_PASSWORD="${ADMIN_BOOTSTRAP_PASSWORD:-}"
 ALLOWED_REGISTRATION_DOMAINS="${ALLOWED_REGISTRATION_DOMAINS:-localhost.local}"
+SWAGGER_ENABLED="${SWAGGER_ENABLED:-true}"
+SWAGGER_PATH="${SWAGGER_PATH:-api-docs}"
+LOG_LEVEL="${LOG_LEVEL:-info}"
 
 N8N_BASIC_AUTH_ACTIVE="${N8N_BASIC_AUTH_ACTIVE:-true}"
-N8N_BASIC_AUTH_PASSWORD="${N8N_BASIC_AUTH_PASSWORD:-changeme}"
 N8N_BASIC_AUTH_USER="${N8N_BASIC_AUTH_USER:-admin}"
+N8N_BASIC_AUTH_PASSWORD="${N8N_BASIC_AUTH_PASSWORD:-changeme}"
 N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY:-}"
-N8N_HOST="${N8N_HOST:-127.0.0.1}"
-N8N_PORT="${N8N_PORT:-5678}"
-N8N_PROTOCOL="${N8N_PROTOCOL:-http}"
-N8N_USER_FOLDER="${N8N_USER_FOLDER:-$N8N_DIR/data}"
-N8N_SECURE_COOKIE="${N8N_SECURE_COOKIE:-false}"
+N8N_EDITOR_BASE_URL="${N8N_EDITOR_BASE_URL:-}"
+WEBHOOK_URL="${WEBHOOK_URL:-}"
+N8N_WEBHOOK_PATH="${N8N_WEBHOOK_PATH:-/webhook/sondage-rps-solutions-tech}"
+N8N_HEALTH_REQUIRED="${N8N_HEALTH_REQUIRED:-false}"
 
-echo "=== Starting deployment: $ENV ==="
-echo "Branch: $TARGET_BRANCH"
-echo "Commit: $COMMIT_SHA"
+NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-}"
+NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-}"
+NEXT_PUBLIC_STRAPI_URL="${NEXT_PUBLIC_STRAPI_URL:-}"
+STRAPI_API_TOKEN="${STRAPI_API_TOKEN:-}"
+NEXT_PUBLIC_BACKEND_MODE="${NEXT_PUBLIC_BACKEND_MODE:-real}"
 
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-
-NODE_MAJOR="${NODE_MAJOR:-24}"
-if command -v nvm >/dev/null 2>&1; then
-    nvm use "$NODE_MAJOR" >/dev/null
-else
-    echo "ERROR: nvm is not installed or unavailable in this shell."
-    echo "Run scripts/vps/bootstrap-server.sh on the VPS first."
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "ERROR: required command not found: $1"
     exit 1
+  fi
+}
+
+require_non_empty() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  if [ -z "$value" ]; then
+    echo "ERROR: required environment variable is missing: $var_name"
+    exit 1
+  fi
+}
+
+trim_trailing_slash() {
+  printf '%s' "${1%/}"
+}
+
+if [ -z "$PUBLIC_BASE_URL" ]; then
+  if [ -n "$DOMAIN_NAME" ]; then
+    PUBLIC_BASE_URL="https://$DOMAIN_NAME"
+  else
+    PUBLIC_BASE_URL="http://$VPS_HOST"
+  fi
 fi
 
-echo "Node version: $(node -v)"
-echo "npm version: $(npm -v)"
+PUBLIC_BASE_URL="$(trim_trailing_slash "$PUBLIC_BASE_URL")"
+
+if [ -z "$NEXT_PUBLIC_APP_URL" ]; then
+  NEXT_PUBLIC_APP_URL="$PUBLIC_BASE_URL"
+fi
+
+if [ -z "$NEXT_PUBLIC_API_URL" ]; then
+  NEXT_PUBLIC_API_URL="$PUBLIC_BASE_URL/api"
+fi
+
+if [ -z "$N8N_EDITOR_BASE_URL" ]; then
+  N8N_EDITOR_BASE_URL="$PUBLIC_BASE_URL/n8n/"
+fi
+
+if [ -z "$WEBHOOK_URL" ]; then
+  WEBHOOK_URL="$PUBLIC_BASE_URL/n8n/"
+fi
+
+require_command git
+require_command docker
+require_command curl
+require_non_empty JWT_SECRET
+require_non_empty N8N_ENCRYPTION_KEY
+
+echo "=== Starting Docker Compose deployment: $ENV ==="
+echo "Branch: $TARGET_BRANCH"
+echo "Commit: $COMMIT_SHA"
+echo "Public base URL: $PUBLIC_BASE_URL"
 
 echo "Fetching latest code from Git..."
 echo "Disk usage before cleanup:"
 df -h /
 
-# Keep only the 3 most recent backups to avoid filling the VPS disk.
 find "$HOME" -maxdepth 1 -type d -name "rps-${ENV}.backup.*" -printf '%T@ %p\n' 2>/dev/null \
-    | sort -nr \
-    | awk 'NR>3 {print $2}' \
-    | xargs -r rm -rf
+  | sort -nr \
+  | awk 'NR>3 {print $2}' \
+  | xargs -r rm -rf
 
 echo "Disk usage after cleanup:"
 df -h /
 
 if [ -d "$APP_DIR" ]; then
-    echo "Backing up current deployment..."
-    mv "$APP_DIR" "${APP_DIR}.backup.$(date +%Y%m%d%H%M%S)" || true
+  echo "Backing up current deployment..."
+  mv "$APP_DIR" "${APP_DIR}.backup.$(date +%Y%m%d%H%M%S)" || true
 fi
 
 mkdir -p "$APP_DIR"
 git clone --depth 1 -b "$TARGET_BRANCH" "$REPO_URL" "$APP_DIR"
 
-if [ ! -f "$APP_DIR/rps-backend/package.json" ]; then
-    echo "ERROR: rps-backend/package.json not found"
-    exit 1
+COMPOSE_DIR="$APP_DIR/scripts/vps"
+COMPOSE_ENV_FILE="$COMPOSE_DIR/.env"
+
+if [ ! -f "$COMPOSE_DIR/docker-compose.yml" ]; then
+  echo "ERROR: docker-compose.yml not found in $COMPOSE_DIR"
+  exit 1
 fi
 
-if [ ! -f "$APP_DIR/rps-frontend/nextjs-app/package.json" ]; then
-    echo "ERROR: rps-frontend/nextjs-app/package.json not found"
-    exit 1
-fi
-
-echo "Git repository cloned successfully"
-
-echo "Configuring n8n environment..."
-mkdir -p "$N8N_DIR"
-mkdir -p "$N8N_USER_FOLDER"
-chmod 700 "$N8N_DIR"
-
-cat > "$N8N_DIR/.env" << N8NEOF
-N8N_BASIC_AUTH_ACTIVE=$N8N_BASIC_AUTH_ACTIVE
-N8N_BASIC_AUTH_PASSWORD=$N8N_BASIC_AUTH_PASSWORD
-N8N_BASIC_AUTH_USER=$N8N_BASIC_AUTH_USER
-N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
-N8N_HOST=$N8N_HOST
-N8N_PORT=$N8N_PORT
-N8N_PROTOCOL=$N8N_PROTOCOL
-N8N_USER_FOLDER=$N8N_USER_FOLDER
-N8N_PATH=/n8n/
-N8N_SECURE_COOKIE=$N8N_SECURE_COOKIE
-N8N_EDITOR_BASE_URL=$N8N_PROTOCOL://$VPS_HOST:$N8N_PORT/n8n/
-WEBHOOK_URL=$N8N_PROTOCOL://$VPS_HOST:$N8N_PORT/n8n/
-N8NEOF
-
-chmod 600 "$N8N_DIR/.env"
-echo "n8n .env written to $N8N_DIR/.env"
-
-echo "Building backend..."
-cd "$APP_DIR/rps-backend"
-npm ci
-npm run build
-
-BACKEND_SCRIPT="$(find dist -type f -name main.js | head -n 1 || true)"
-if [ -z "$BACKEND_SCRIPT" ]; then
-    echo "ERROR: no main.js found in dist/ after build"
-    ls -la dist/ || echo "dist/ doesn't exist"
-    exit 1
-fi
-echo "Backend entrypoint: $BACKEND_SCRIPT"
-
-cat > .env << ENVEOF
+echo "Writing Docker Compose environment file..."
+cat > "$COMPOSE_ENV_FILE" <<EOF
+COMPOSE_PROJECT_NAME=rps-$ENV
 NODE_ENV=production
 PORT=3000
 JWT_SECRET=$JWT_SECRET
@@ -139,375 +146,138 @@ DB_PORT=$DB_PORT
 DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
 DB_NAME=$DB_NAME
-DB_SYNCHRONIZE=false
-DB_LOGGING=false
+DB_SYNCHRONIZE=$DB_SYNCHRONIZE
+DB_LOGGING=$DB_LOGGING
 AUTH_DISABLED=$AUTH_DISABLED
-CORS_ORIGIN=http://localhost:3001,http://127.0.0.1:3001,http://$VPS_HOST:3001
-SWAGGER_ENABLED=true
-SWAGGER_PATH=api-docs
 ADMIN_ALLOWED_EMAILS=$ADMIN_ALLOWED_EMAILS
 ADMIN_BOOTSTRAP_EMAILS=$ADMIN_BOOTSTRAP_EMAILS
+ADMIN_BOOTSTRAP_PASSWORD=$ADMIN_BOOTSTRAP_PASSWORD
 ALLOWED_REGISTRATION_DOMAINS=$ALLOWED_REGISTRATION_DOMAINS
-ENVEOF
+SWAGGER_ENABLED=$SWAGGER_ENABLED
+SWAGGER_PATH=$SWAGGER_PATH
+LOG_LEVEL=$LOG_LEVEL
+NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+NEXT_PUBLIC_STRAPI_URL=$NEXT_PUBLIC_STRAPI_URL
+STRAPI_API_TOKEN=$STRAPI_API_TOKEN
+NEXT_PUBLIC_BACKEND_MODE=$NEXT_PUBLIC_BACKEND_MODE
+N8N_BASIC_AUTH_ACTIVE=$N8N_BASIC_AUTH_ACTIVE
+N8N_BASIC_AUTH_USER=$N8N_BASIC_AUTH_USER
+N8N_BASIC_AUTH_PASSWORD=$N8N_BASIC_AUTH_PASSWORD
+N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+N8N_BASE_URL=http://n8n:5678/n8n
+N8N_WEBHOOK_URL=http://n8n:5678/n8n
+N8N_WEBHOOK_PATH=$N8N_WEBHOOK_PATH
+N8N_HEALTH_REQUIRED=$N8N_HEALTH_REQUIRED
+N8N_EDITOR_BASE_URL=$N8N_EDITOR_BASE_URL
+WEBHOOK_URL=$WEBHOOK_URL
+APP_URL=$NEXT_PUBLIC_APP_URL
+EOF
 
-DB_ACTIVE_HOST="$DB_HOST"
-DB_ACTIVE_PORT="$DB_PORT"
+chmod 600 "$COMPOSE_ENV_FILE"
 
-case "$DB_ACTIVE_HOST" in
-    localhost|127.0.0.1|::1)
-        DB_HOST_IS_LOCAL=true
-        ;;
-    *)
-        DB_HOST_IS_LOCAL=false
-        ;;
-esac
-
-if [ "$DB_HOST_IS_LOCAL" = "true" ]; then
-    echo "Local PostgreSQL detected; ensuring service is running..."
-    if ! command -v psql >/dev/null 2>&1; then
-        echo "PostgreSQL client/server tools missing; installing PostgreSQL..."
-        apt-get update >/dev/null 2>&1 || true
-        DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib >/dev/null 2>&1 || true
-    fi
-
-    if command -v systemctl >/dev/null 2>&1; then
-        if ! systemctl is-active --quiet postgresql; then
-            systemctl enable postgresql >/dev/null 2>&1 || true
-            systemctl start postgresql >/dev/null 2>&1 || sudo systemctl start postgresql >/dev/null 2>&1 || true
-        fi
-    fi
+echo "Stopping legacy PM2 runtime if present..."
+if command -v pm2 >/dev/null 2>&1; then
+  pm2 delete all >/dev/null 2>&1 || true
+  pm2 save >/dev/null 2>&1 || true
 fi
 
-DB_WAIT_RETRIES=24
-DB_WAIT_INTERVAL=5
-DB_READY=false
-
-for i in $(seq 1 $DB_WAIT_RETRIES); do
-    echo "Checking database connectivity... (attempt $i/$DB_WAIT_RETRIES)"
-    if [ "$DB_HOST_IS_LOCAL" = "true" ]; then
-        if command -v pg_isready >/dev/null 2>&1 && PGPASSWORD="$DB_PASSWORD" pg_isready -h "$DB_ACTIVE_HOST" -p "$DB_ACTIVE_PORT" -U "$DB_USER" >/dev/null 2>&1; then
-            echo "✓ Local PostgreSQL is ready"
-            DB_READY=true
-            break
-        fi
-
-        if PGPASSWORD="$DB_PASSWORD" psql -h "$DB_ACTIVE_HOST" -p "$DB_ACTIVE_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" >/dev/null 2>&1; then
-            echo "✓ Local PostgreSQL is ready"
-            DB_READY=true
-            break
-        fi
-    elif node -e "const net=require('net'); const host=process.argv[1]; const port=Number(process.argv[2]); const s=net.connect({host,port}, ()=>{s.end(); process.exit(0);}); s.on('error', ()=>process.exit(1)); setTimeout(()=>process.exit(1), 2000);" "$DB_ACTIVE_HOST" "$DB_ACTIVE_PORT"; then
-        echo "✓ Database TCP port is reachable"
-        DB_READY=true
-        break
-    fi
-    echo "Database not reachable yet, waiting ${DB_WAIT_INTERVAL}s..."
-    sleep $DB_WAIT_INTERVAL
-done
-
-if [ "$DB_READY" != "true" ] && [ "$DB_HOST_IS_LOCAL" = "false" ]; then
-    echo "Primary database host was unreachable; trying local PostgreSQL fallback on localhost:5432..."
-    DB_ACTIVE_HOST="localhost"
-    DB_ACTIVE_PORT="5432"
-    DB_HOST_IS_LOCAL=true
-
-    if ! command -v psql >/dev/null 2>&1; then
-        echo "PostgreSQL client/server tools missing; installing PostgreSQL for fallback..."
-        apt-get update >/dev/null 2>&1 || true
-        DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib >/dev/null 2>&1 || true
-    fi
-
-    if command -v systemctl >/dev/null 2>&1; then
-        if ! systemctl is-active --quiet postgresql; then
-            systemctl enable postgresql >/dev/null 2>&1 || true
-            systemctl start postgresql >/dev/null 2>&1 || sudo systemctl start postgresql >/dev/null 2>&1 || true
-        fi
-    fi
-
-    for i in $(seq 1 $DB_WAIT_RETRIES); do
-        echo "Checking local database fallback... (attempt $i/$DB_WAIT_RETRIES)"
-        if command -v pg_isready >/dev/null 2>&1 && PGPASSWORD="$DB_PASSWORD" pg_isready -h "$DB_ACTIVE_HOST" -p "$DB_ACTIVE_PORT" -U "$DB_USER" >/dev/null 2>&1; then
-            echo "✓ Local PostgreSQL fallback is ready"
-            DB_READY=true
-            break
-        fi
-
-        if PGPASSWORD="$DB_PASSWORD" psql -h "$DB_ACTIVE_HOST" -p "$DB_ACTIVE_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" >/dev/null 2>&1; then
-            echo "✓ Local PostgreSQL fallback is ready"
-            DB_READY=true
-            break
-        fi
-
-        echo "Local PostgreSQL fallback not ready yet, waiting ${DB_WAIT_INTERVAL}s..."
-        sleep $DB_WAIT_INTERVAL
-    done
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
+  echo "Stopping host nginx to free ports 80/443 for Docker..."
+  sudo systemctl stop nginx || true
+  sudo systemctl disable nginx || true
 fi
 
-if [ "$DB_READY" != "true" ]; then
-    echo "ERROR: Database is not reachable at $DB_HOST:$DB_PORT after $((DB_WAIT_RETRIES * DB_WAIT_INTERVAL))s"
-    exit 1
-fi
+cd "$COMPOSE_DIR"
 
-MIGRATION_RETRIES=5
-MIGRATION_INTERVAL=4
+echo "Pulling registry images..."
+docker compose pull --ignore-buildable
+
+echo "Building application images..."
+docker compose build backend frontend
+
+echo "Starting dependencies..."
+docker compose up -d postgres n8n
+
+MIGRATION_RETRIES=8
+MIGRATION_INTERVAL=5
 MIGRATION_DONE=false
 
 for i in $(seq 1 $MIGRATION_RETRIES); do
-    echo "Running migrations... (attempt $i/$MIGRATION_RETRIES)"
-    if npm run migration:run; then
-        MIGRATION_DONE=true
-        echo "✓ Database migrations applied"
-        break
-    fi
+  echo "Running backend migrations... (attempt $i/$MIGRATION_RETRIES)"
+  if docker compose run --rm backend npm run migration:run:prod; then
+    MIGRATION_DONE=true
+    echo "Migration command completed."
+    break
+  fi
 
-    if [ $i -lt $MIGRATION_RETRIES ]; then
-        echo "Migration attempt failed, retrying in ${MIGRATION_INTERVAL}s..."
-        sleep $MIGRATION_INTERVAL
-    fi
+  if [ $i -lt $MIGRATION_RETRIES ]; then
+    echo "Migration attempt failed, retrying in ${MIGRATION_INTERVAL}s..."
+    sleep $MIGRATION_INTERVAL
+  fi
 done
 
 if [ "$MIGRATION_DONE" != "true" ]; then
-    echo "ERROR: Database migration failed after $MIGRATION_RETRIES attempts"
+  echo "ERROR: migrations failed after $MIGRATION_RETRIES attempts"
+  docker compose logs postgres backend --tail 100 || true
+  exit 1
+fi
+
+echo "Starting full stack..."
+docker compose up -d --build --remove-orphans
+
+wait_for_url() {
+  local name="$1"
+  local url="$2"
+  local retries="$3"
+  local interval="$4"
+
+  for i in $(seq 1 "$retries"); do
+    echo "Checking ${name}... (attempt $i/$retries)"
+    if curl --fail --silent --show-error --max-time 10 "$url" >/dev/null 2>&1; then
+      echo "$name is ready."
+      return 0
+    fi
+    sleep "$interval"
+  done
+
+  echo "ERROR: ${name} did not become ready."
+  return 1
+}
+
+if ! wait_for_url "backend" "http://127.0.0.1/api/health" 18 5; then
+  docker compose logs backend --tail 120 || true
+  exit 1
+fi
+
+if ! wait_for_url "frontend" "http://127.0.0.1/login" 12 5; then
+  docker compose logs frontend nginx --tail 120 || true
+  exit 1
+fi
+
+if [ "$N8N_BASIC_AUTH_ACTIVE" = "true" ]; then
+  if ! curl --fail --silent --show-error --max-time 10 \
+    --user "${N8N_BASIC_AUTH_USER}:${N8N_BASIC_AUTH_PASSWORD}" \
+    "http://127.0.0.1/n8n/" >/dev/null 2>&1; then
+    echo "ERROR: n8n did not respond behind nginx."
+    docker compose logs n8n nginx --tail 120 || true
     exit 1
-fi
-
-echo "Backend built successfully"
-
-echo "Building frontend..."
-cd "$APP_DIR/rps-frontend/nextjs-app"
-npm ci
-
-cat > .env.local << ENVEOF
-NEXT_PUBLIC_API_URL=http://$VPS_HOST:3000/api
-API_URL=http://127.0.0.1:3000/api
-NEXT_PUBLIC_STRAPI_URL=
-STRAPI_API_TOKEN=
-ENVEOF
-
-rm -rf .next
-npm run build
-
-if [ ! -d ".next" ]; then
-    echo "ERROR: .next directory not found after build"
-    ls -la . | head -20
+  fi
+else
+  if ! wait_for_url "n8n" "http://127.0.0.1/n8n/" 12 5; then
+    docker compose logs n8n nginx --tail 120 || true
     exit 1
-fi
-
-echo "Frontend built successfully"
-echo "Configuring PM2..."
-
-cat > "$APP_DIR/ecosystem.config.cjs" << PM2EOF
-module.exports = {
-    apps: [
-        {
-            name: "rps-backend",
-            cwd: "$APP_DIR/rps-backend",
-            script: "$BACKEND_SCRIPT",
-            interpreter: "node",
-            env: {
-                NODE_ENV: "production",
-                PORT: 3000,
-                PATH: "$PATH",
-                JWT_SECRET: "$JWT_SECRET",
-                DB_HOST: "$DB_HOST",
-                DB_PORT: "$DB_PORT",
-                DB_USER: "$DB_USER",
-                DB_PASSWORD: "$DB_PASSWORD",
-                DB_NAME: "$DB_NAME",
-                DB_SYNCHRONIZE: "false",
-                DB_LOGGING: "false",
-                AUTH_DISABLED: "$AUTH_DISABLED",
-                CORS_ORIGIN: "http://localhost:3001,http://127.0.0.1:3001,http://$VPS_HOST:3001",
-                SWAGGER_ENABLED: "true",
-                SWAGGER_PATH: "api-docs",
-                ADMIN_ALLOWED_EMAILS: "$ADMIN_ALLOWED_EMAILS",
-                ADMIN_BOOTSTRAP_EMAILS: "$ADMIN_BOOTSTRAP_EMAILS",
-                ALLOWED_REGISTRATION_DOMAINS: "$ALLOWED_REGISTRATION_DOMAINS"
-            },
-            instances: 1,
-            exec_mode: "fork",
-            watch: false,
-            max_memory_restart: "500M",
-            autorestart: true,
-            max_restarts: 10,
-            min_uptime: "10s",
-            kill_timeout: 5000,
-            listen_timeout: 10000
-        },
-        {
-            name: "rps-frontend",
-            cwd: "$APP_DIR/rps-frontend/nextjs-app",
-            script: "node_modules/next/dist/bin/next",
-            args: "start -p 3001",
-            interpreter: "node",
-            env: {
-                NODE_ENV: "production",
-                PORT: 3001,
-                PATH: "$PATH",
-                NEXT_PUBLIC_API_URL: "http://$VPS_HOST:3000/api",
-                API_URL: "http://127.0.0.1:3000/api",
-                NEXT_PUBLIC_STRAPI_URL: "",
-                STRAPI_API_TOKEN: ""
-            },
-            instances: 1,
-            exec_mode: "fork",
-            watch: false,
-            max_memory_restart: "500M",
-            autorestart: true,
-            max_restarts: 10,
-            min_uptime: "10s",
-            kill_timeout: 5000,
-            listen_timeout: 10000
-        },
-        {
-            name: "rps-n8n",
-            cwd: "$N8N_DIR",
-            script: "n8n",
-            args: "start",
-            interpreter: "none",
-            env: {
-                PATH: "$PATH",
-                N8N_BASIC_AUTH_ACTIVE: "$N8N_BASIC_AUTH_ACTIVE",
-                N8N_BASIC_AUTH_PASSWORD: "$N8N_BASIC_AUTH_PASSWORD",
-                N8N_BASIC_AUTH_USER: "$N8N_BASIC_AUTH_USER",
-                N8N_ENCRYPTION_KEY: "$N8N_ENCRYPTION_KEY",
-                N8N_HOST: "$N8N_HOST",
-                N8N_PORT: "$N8N_PORT",
-                N8N_PROTOCOL: "$N8N_PROTOCOL",
-                N8N_USER_FOLDER: "$N8N_USER_FOLDER",
-                N8N_PATH: "/n8n/",
-                N8N_SECURE_COOKIE: "$N8N_SECURE_COOKIE",
-                N8N_EDITOR_BASE_URL: "$N8N_PROTOCOL://$VPS_HOST:$N8N_PORT/n8n/",
-                WEBHOOK_URL: "$N8N_PROTOCOL://$VPS_HOST:$N8N_PORT/n8n/"
-            },
-            instances: 1,
-            exec_mode: "fork",
-            watch: false,
-            max_memory_restart: "1G",
-            autorestart: true,
-            max_restarts: 10,
-            min_uptime: "10s",
-            kill_timeout: 5000,
-            listen_timeout: 10000
-        }
-    ]
-};
-PM2EOF
-
-cd "$APP_DIR"
-
-if ! command -v pm2 >/dev/null 2>&1; then
-    echo "Installing PM2..."
-    npm install -g pm2
-fi
-
-pm2 delete all 2>/dev/null || true
-pm2 flush >/dev/null 2>&1 || true
-
-# Remove stale RPS logs so deployment output only shows fresh runtime issues.
-rm -f "$HOME/.pm2/logs/rps-backend"*-error*.log "$HOME/.pm2/logs/rps-backend"*-out*.log 2>/dev/null || true
-rm -f "$HOME/.pm2/logs/rps-frontend"*-error*.log "$HOME/.pm2/logs/rps-frontend"*-out*.log 2>/dev/null || true
-rm -f "$HOME/.pm2/logs/rps-n8n"*-error*.log "$HOME/.pm2/logs/rps-n8n"*-out*.log 2>/dev/null || true
-
-pm2 start ecosystem.config.cjs
-pm2 save
-
-echo "Waiting for services to initialize..."
-MAX_RETRIES=15
-RETRY_INTERVAL=5
-BACKEND_READY=false
-
-for i in $(seq 1 $MAX_RETRIES); do
-    echo "Checking backend health... (attempt $i/$MAX_RETRIES)"
-    if curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
-        echo "✓ Backend is ready!"
-        BACKEND_READY=true
-        break
-    fi
-
-    if [ $i -eq 1 ]; then
-        echo "Backend not ready yet, checking PM2 status..."
-        pm2 list
-    fi
-
-    if [ $i -eq 5 ] || [ $i -eq 10 ]; then
-        echo "--- Backend PM2 logs (last 10 lines) ---"
-        pm2 logs rps-backend --lines 10 --nostream 2>/dev/null || true
-    fi
-
-    echo "Waiting ${RETRY_INTERVAL}s before next attempt..."
-    sleep $RETRY_INTERVAL
-done
-
-if [ "$BACKEND_READY" != "true" ]; then
-    echo "✗ ERROR: Backend failed to start after $((MAX_RETRIES * RETRY_INTERVAL))s"
-    echo "--- Final PM2 status ---"
-    pm2 list
-    echo "--- Final backend logs ---"
-    pm2 logs rps-backend --lines 30 --nostream 2>/dev/null || true
-    exit 1
-fi
-
-FRONTEND_MAX_RETRIES=10
-FRONTEND_READY=false
-
-for i in $(seq 1 $FRONTEND_MAX_RETRIES); do
-    echo "Checking frontend health... (attempt $i/$FRONTEND_MAX_RETRIES)"
-    if curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3001/login >/dev/null 2>&1; then
-        echo "✓ Frontend is ready!"
-        FRONTEND_READY=true
-        break
-    fi
-    echo "Waiting ${RETRY_INTERVAL}s before next attempt..."
-    sleep $RETRY_INTERVAL
-done
-
-if [ "$FRONTEND_READY" != "true" ]; then
-    echo "⚠ WARNING: Frontend not ready yet, but deployment continues (frontend may need more time)"
-fi
-
-N8N_MAX_RETRIES=15
-N8N_READY=false
-N8N_PORT_CHECK="$N8N_PORT"
-
-for i in $(seq 1 $N8N_MAX_RETRIES); do
-    echo "Checking n8n health... (attempt $i/$N8N_MAX_RETRIES)"
-    if curl --fail --silent --show-error --max-time 10 http://127.0.0.1:$N8N_PORT_CHECK/healthz >/dev/null 2>&1; then
-        echo "✓ n8n is ready!"
-        N8N_READY=true
-        break
-    fi
-    if [ $i -eq 5 ] || [ $i -eq 10 ]; then
-        echo "--- n8n PM2 logs (last 10 lines) ---"
-        pm2 logs rps-n8n --lines 10 --nostream 2>/dev/null || true
-    fi
-    echo "Waiting ${RETRY_INTERVAL}s before next attempt..."
-    sleep $RETRY_INTERVAL
-done
-
-if [ "$N8N_READY" != "true" ]; then
-    echo "✗ ERROR: n8n failed to start after $((N8N_MAX_RETRIES * RETRY_INTERVAL))s"
-    pm2 list
-    pm2 logs rps-n8n --lines 30 --nostream 2>/dev/null || true
-    exit 1
+  fi
 fi
 
 echo "Running final smoke tests..."
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3000/api/health >/dev/null
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3001/login >/dev/null
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3001/results >/dev/null
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:$N8N_PORT_CHECK/healthz >/dev/null
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1/api/health >/dev/null
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1/login >/dev/null
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1/results >/dev/null
 
-echo "✓ All smoke tests passed!"
-
-sudo env PATH="$PATH" "$(command -v pm2)" startup systemd -u "$USER" --hp "$HOME" >/dev/null 2>&1 || true
-pm2 save
-
-pm2 status
-pm2 logs --lines 20 --nostream
+echo "Deployment status:"
+docker compose ps
 
 echo "=== Deployment completed: $ENV ==="
 echo "Commit deployed: $COMMIT_SHA"
-echo "Backend API: http://localhost:3000"
-echo "Frontend: http://localhost:3001"
-echo "n8n: http://localhost:5678"
+echo "Public URL: $PUBLIC_BASE_URL"
