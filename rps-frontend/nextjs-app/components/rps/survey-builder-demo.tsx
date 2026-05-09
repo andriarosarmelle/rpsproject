@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, GripHorizontal } from "lucide-react";
 import { Card, PrimaryButton, SecondaryButton } from "@/components/rps/ui";
 import type { SurveyBuilderData } from "@/lib/repositories/rps-repository";
@@ -80,34 +80,42 @@ type SurveyBuilderMode = "create" | "edit";
 export function SurveyBuilderDemo({
   initialData,
   mode,
+  hydrateInitialCampaign = mode === "edit",
 }: {
   initialData: SurveyBuilderData;
   mode: SurveyBuilderMode;
+  hydrateInitialCampaign?: boolean;
 }) {
   const router = useRouter();
-  const initialCompanyId = getInitialCompanyId(initialData, mode);
+  const searchParams = useSearchParams();
+  const shouldUseInitialCampaign = mode === "edit" || hydrateInitialCampaign;
+  const initialCompanyId = getInitialCompanyId(initialData, shouldUseInitialCampaign);
   const [isPending, startTransition] = useTransition();
   const [companies, setCompanies] = useState(initialData.companies);
   const [campaigns, setCampaigns] = useState(initialData.campaigns);
   const [campaignId, setCampaignId] = useState(
-    mode === "create" ? null : initialData.campaignId,
+    shouldUseInitialCampaign ? initialData.campaignId : null,
   );
   const [companyId, setCompanyId] = useState(initialCompanyId);
   const [newCompanyName, setNewCompanyName] = useState("");
-  const [status, setStatus] = useState(mode === "create" ? "draft" : initialData.status);
-  const [title, setTitle] = useState(() => (mode === "create" ? "" : initialData.title));
+  const [status, setStatus] = useState(
+    shouldUseInitialCampaign ? initialData.status : "draft",
+  );
+  const [title, setTitle] = useState(() =>
+    shouldUseInitialCampaign ? initialData.title : "",
+  );
   const [description, setDescription] = useState(() =>
-    mode === "create" ? "" : initialData.description,
+    shouldUseInitialCampaign ? initialData.description : "",
   );
   const [startDate, setStartDate] = useState(toDateInputValue(initialData.startDate));
   const [endDate, setEndDate] = useState(toDateInputValue(initialData.endDate));
   const [questions, setQuestions] = useState(
-    mode === "create"
-      ? []
-      : initialData.questions
+    shouldUseInitialCampaign
+      ? initialData.questions
           .slice()
           .sort((a, b) => a.orderIndex - b.orderIndex)
-          .map(ensureQuestionOptions),
+          .map(ensureQuestionOptions)
+      : [],
   );
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -157,23 +165,25 @@ export function SurveyBuilderDemo({
   const builderTitle = mode === "edit" ? "Modifier un sondage" : "Créer un sondage";
 
   useEffect(() => {
+    const shouldUseNextInitialCampaign = mode === "edit" || hydrateInitialCampaign;
+
     setCompanies(initialData.companies);
     setCampaigns(initialData.campaigns);
-    setCampaignId(mode === "create" ? null : initialData.campaignId);
-    setCompanyId(getInitialCompanyId(initialData, mode));
+    setCampaignId(shouldUseNextInitialCampaign ? initialData.campaignId : null);
+    setCompanyId(getInitialCompanyId(initialData, shouldUseNextInitialCampaign));
     setNewCompanyName("");
-    setStatus(mode === "create" ? "draft" : initialData.status);
-    setTitle(mode === "create" ? "" : initialData.title);
-    setDescription(mode === "create" ? "" : initialData.description);
+    setStatus(shouldUseNextInitialCampaign ? initialData.status : "draft");
+    setTitle(shouldUseNextInitialCampaign ? initialData.title : "");
+    setDescription(shouldUseNextInitialCampaign ? initialData.description : "");
     setStartDate(toDateInputValue(initialData.startDate));
     setEndDate(toDateInputValue(initialData.endDate));
     setQuestions(
-      mode === "create"
-        ? []
-        : initialData.questions
+      shouldUseNextInitialCampaign
+        ? initialData.questions
             .slice()
             .sort((a, b) => a.orderIndex - b.orderIndex)
-            .map(ensureQuestionOptions),
+            .map(ensureQuestionOptions)
+        : [],
     );
     setFeedback(null);
     setError(null);
@@ -184,7 +194,7 @@ export function SurveyBuilderDemo({
     setImportSuccess(null);
     setHasDownloadedLinks(false);
     setSelectedFileName(null);
-  }, [initialData, mode]);
+  }, [hydrateInitialCampaign, initialData, mode]);
   function runMutation<TResponse>(
     mutation: () => Promise<TResponse>,
     successMessage: string,
@@ -361,6 +371,10 @@ export function SurveyBuilderDemo({
       (result) => {
         setCampaignId(result.id);
         setStatus(result.status ?? "preparation");
+        const nextSearchParams = new URLSearchParams(searchParams.toString());
+        nextSearchParams.set("tab", "create");
+        nextSearchParams.set("campaignId", String(result.id));
+        router.replace(`/surveys?${nextSearchParams.toString()}`, { scroll: false });
         setCampaigns((current) => [
           ...current.filter((campaign) => campaign.id !== result.id),
           {
@@ -1733,12 +1747,11 @@ export function SurveyBuilderDemo({
   );
 }
 
-function getInitialCompanyId(initialData: SurveyBuilderData, mode: SurveyBuilderMode) {
-  if (mode === "create") {
-    return initialData.companies[0]?.id ?? null;
-  }
-
-  return initialData.companyId;
+function getInitialCompanyId(
+  initialData: SurveyBuilderData,
+  shouldUseInitialCampaign: boolean,
+) {
+  return shouldUseInitialCampaign ? initialData.companyId : initialData.companies[0]?.id ?? null;
 }
 
 function sanitizeOptions(options?: string[]) {

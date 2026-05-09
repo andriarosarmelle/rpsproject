@@ -13,10 +13,7 @@ export default async function SurveysPage({
 }) {
   const { scenario, tab, campaignId } = await searchParams;
   const activeTab = tab ?? "create";
-  const selectedCampaignId =
-    activeTab === "edit" && campaignId
-      ? Number.parseInt(campaignId, 10) || null
-      : null;
+  const selectedCampaignId = campaignId ? Number.parseInt(campaignId, 10) || null : null;
 
   try {
     const surveyBuilderData = await getServerTrpcCaller().data.surveyBuilder({
@@ -134,6 +131,7 @@ export default async function SurveysPage({
       <SurveyBuilderDemo
         initialData={surveyBuilderData}
         mode={activeTab === "edit" ? "edit" : "create"}
+        hydrateInitialCampaign={Boolean(selectedCampaignId)}
       />
       </section>
     );
