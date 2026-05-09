@@ -10,7 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import {
   CreateEmployeeDto,
   ImportEmployeesDto,
@@ -20,6 +20,7 @@ import { EmployeeService } from './employee.service';
 import { AuthGuard } from '../auth/auth.guard';
 
 @UseGuards(AuthGuard)
+@ApiBearerAuth()
 @Controller('employees')
 export class EmployeeController {
   constructor(private readonly employeeService: EmployeeService) {}

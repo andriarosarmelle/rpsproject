@@ -545,25 +545,24 @@ export class CampaignParticipantService {
             employeesToSave.push(employee);
           }
 
-          if (employeesToSave.length > 0) {
-            // Save batch within a transaction
-            await this.employeeRepository.manager.transaction(
-              async (transactionalEntityManager) => {
-                const savedBatch =
-                  await transactionalEntityManager.save(employeesToSave);
-                for (const employee of savedBatch) {
-                  if (employee.email) {
-                    employeesByEmail.set(
-                      employee.email.toLowerCase(),
-                      employee,
-                    );
-                  }
-                }
-                this.logger.log(
-                  `[Import] Saved ${savedBatch.length} employees in batch`,
-                );
-              },
+          let savedCount = 0;
+          for (const employee of employeesToSave) {
+            const savedEmployee = await this.saveImportedEmployee(
+              employee,
+              payload.company_id,
             );
+
+            if (savedEmployee?.email) {
+              employeesByEmail.set(
+                savedEmployee.email.toLowerCase(),
+                savedEmployee,
+              );
+              savedCount += 1;
+            }
+          }
+
+          if (savedCount > 0) {
+            this.logger.log(`[Import] Saved ${savedCount} employees in batch`);
           }
         } catch (error) {
           this.logger.error(
@@ -802,6 +801,95 @@ export class CampaignParticipantService {
       reminded_count: pendingParticipants.length,
       reminded_participants: pendingParticipants,
     };
+  }
+
+  private async saveImportedEmployee(
+    employee: Employee,
+    companyId: number,
+  ): Promise<Employee | null> {
+    const email = employee.email?.trim().toLowerCase();
+
+    if (!email) {
+      return null;
+    }
+
+    try {
+      return await this.employeeRepository.save(employee);
+    } catch (error) {
+      if (this.isUniqueConstraintError(error, ['survey_token'])) {
+        employee.survey_token = randomUUID();
+        return this.employeeRepository.save(employee);
+      }
+
+      if (!this.isUniqueConstraintError(error, ['email'])) {
+        throw error;
+      }
+
+      const existingEmployee = await this.employeeRepository
+        .createQueryBuilder('employee')
+        .leftJoinAndSelect('employee.company', 'company')
+        .where('LOWER(employee.email) = :email', { email })
+        .getOne();
+
+      if (!existingEmployee) {
+        throw error;
+      }
+
+      if (existingEmployee.company.id !== companyId) {
+        this.logger.warn(
+          `[Import] Employee ${email} already exists for different company. Skipping.`,
+        );
+        return null;
+      }
+
+      existingEmployee.first_name = employee.first_name;
+      existingEmployee.last_name = employee.last_name;
+      existingEmployee.phone = employee.phone;
+      existingEmployee.status = employee.status;
+      existingEmployee.department = employee.department;
+      existingEmployee.company_name = employee.company_name;
+      existingEmployee.company = employee.company;
+      existingEmployee.deleted_at = null;
+      existingEmployee.survey_token =
+        existingEmployee.survey_token ?? randomUUID();
+
+      try {
+        return await this.employeeRepository.save(existingEmployee);
+      } catch (retryError) {
+        if (this.isUniqueConstraintError(retryError, ['survey_token'])) {
+          existingEmployee.survey_token = randomUUID();
+          return this.employeeRepository.save(existingEmployee);
+        }
+
+        throw retryError;
+      }
+    }
+  }
+
+  private isUniqueConstraintError(error: unknown, fields: string[]) {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const errorLike = error as {
+      code?: unknown;
+      constraint?: unknown;
+      detail?: unknown;
+      message?: unknown;
+    };
+
+    if (errorLike.code !== '23505') {
+      return false;
+    }
+
+    const constraint =
+      typeof errorLike.constraint === 'string' ? errorLike.constraint : '';
+    const detail = typeof errorLike.detail === 'string' ? errorLike.detail : '';
+    const message =
+      typeof errorLike.message === 'string' ? errorLike.message : '';
+    const text = `${constraint} ${detail} ${message}`.toLowerCase();
+
+    return fields.some((field) => text.includes(field.toLowerCase()));
   }
 
   private async findCampaignOrThrow(campaignId: number) {

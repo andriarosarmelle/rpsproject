@@ -9,12 +9,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { CreateCompanyDto, UpdateCompanyDto } from './dto/company.dto';
 import { CompanyService } from './company.service';
 import { AuthGuard } from '../auth/auth.guard';
 
 @UseGuards(AuthGuard)
+@ApiBearerAuth()
 @Controller('companies')
 export class CompanyController {
   constructor(private readonly companyService: CompanyService) {}

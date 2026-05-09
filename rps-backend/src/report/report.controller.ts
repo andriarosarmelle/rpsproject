@@ -9,12 +9,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { CreateReportDto, UpdateReportDto } from './dto/report.dto';
 import { ReportService } from './report.service';
 import { AuthGuard } from '../auth/auth.guard';
 
 @Controller('reports')
+@ApiBearerAuth()
 export class ReportController {
   constructor(private readonly reportService: ReportService) {}
 

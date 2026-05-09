@@ -216,7 +216,13 @@ export class EmployeeService {
       ? payload.rows
       : this.parseCsv(payload.csv ?? '');
 
-    const normalizedRows = rows.filter((row) => row.email?.trim());
+    const normalizedRows = Array.from(
+      new Map(
+        rows
+          .filter((row) => row.email?.trim())
+          .map((row) => [row.email.trim().toLowerCase(), row]),
+      ).values(),
+    );
     const emails = normalizedRows.map((row) => row.email.trim().toLowerCase());
 
     const existingEmployees = emails.length

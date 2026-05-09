@@ -11,13 +11,14 @@ import {
   Logger,
   Req,
 } from '@nestjs/common';
-import { ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { CreateCampaignDto, UpdateCampaignDto } from './dto/campaign.dto';
 import { CampaignService } from './campaign.service';
 import { AuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedRequest } from '../auth/auth.guard';
 
 @Controller('campaigns')
+@ApiBearerAuth()
 export class CampaignController {
   private readonly logger = new Logger(CampaignController.name);
 

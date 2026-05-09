@@ -8,7 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { CampaignParticipantService } from './campaign-participant.service';
 import {
   CreateCampaignParticipantDto,
@@ -52,6 +52,7 @@ export class CampaignParticipantController {
 
   // Protected routes (admin only)
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @Post()
   @ApiBody({ type: CreateCampaignParticipantDto })
   @ApiResponse({ status: 201, description: 'Participant ajouté avec succès' })
@@ -61,18 +62,21 @@ export class CampaignParticipantController {
   }
 
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @Get()
   findAll() {
     return this.campaignParticipantService.findAll();
   }
 
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @Get('campaign/:campaignId/progress')
   getCampaignProgress(@Param('campaignId', ParseIntPipe) campaignId: number) {
     return this.campaignParticipantService.getCampaignProgress(campaignId);
   }
 
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @Post('campaign/:campaignId/import-employees')
   @ApiBody({ type: ImportCampaignEmployeesDto })
   @ApiResponse({ status: 201, description: 'Employés importés avec succès' })
@@ -88,6 +92,7 @@ export class CampaignParticipantController {
   }
 
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @Post('campaign/:campaignId/remind')
   @ApiBody({ type: SendCampaignRemindersDto })
   @ApiResponse({ status: 200, description: 'Rappels envoyés avec succès' })
@@ -100,12 +105,14 @@ export class CampaignParticipantController {
   }
 
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.campaignParticipantService.findOne(id);
   }
 
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @Patch(':id')
   @ApiBody({ type: UpdateCampaignParticipantDto })
   @ApiResponse({

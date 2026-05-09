@@ -180,6 +180,7 @@ export class CampaignService {
     return this.triggerAnalysis(
       campaignId,
       campaign.name,
+      campaign.company?.id ?? null,
       companyName,
       userEmail,
     );
@@ -197,6 +198,7 @@ export class CampaignService {
     return this.triggerAnalysis(
       campaignId,
       campaign.name,
+      campaign.company?.id ?? null,
       finalCompanyName,
       userEmail,
     );
@@ -277,6 +279,7 @@ export class CampaignService {
   private async triggerAnalysis(
     campaignId: number,
     campaignName: string | null,
+    companyId: number | null,
     companyName: string,
     userEmail: string,
   ) {
@@ -297,9 +300,11 @@ export class CampaignService {
       body: {
         body: employeesData,
         campaign_id: campaignId,
+        company_id: companyId,
         client_email: userEmail,
       },
       campaign_name: campaignName,
+      company_id: companyId,
       company_name: companyName,
       user_email: userEmail,
     };

@@ -125,6 +125,7 @@ describe('CampaignService', () => {
       (service as any).triggerAnalysis(
         4,
         'Campagne vide',
+        10,
         'Entreprise Test',
         'client@example.com',
       ),
@@ -152,6 +153,7 @@ describe('CampaignService', () => {
     const result = await (service as any).triggerAnalysis(
       1,
       'Campagne active',
+      10,
       'Entreprise Test',
       'client@example.com',
     );
@@ -183,9 +185,11 @@ describe('CampaignService', () => {
           },
         ],
         campaign_id: 1,
+        company_id: 10,
         client_email: 'client@example.com',
       },
       campaign_name: 'Campagne active',
+      company_id: 10,
       company_name: 'Entreprise Test',
       user_email: 'client@example.com',
     });
@@ -205,6 +209,7 @@ describe('CampaignService', () => {
       (service as any).triggerAnalysis(
         1,
         'Campagne active',
+        10,
         'Entreprise Test',
         'client@example.com',
       ),

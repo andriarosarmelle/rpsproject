@@ -9,7 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiResponse } from '@nestjs/swagger';
 import {
   CreateQuestionDto,
   ReorderQuestionDto,
@@ -19,6 +19,7 @@ import { QuestionService } from './question.service';
 import { AuthGuard } from '../auth/auth.guard';
 
 @UseGuards(AuthGuard)
+@ApiBearerAuth()
 @Controller('questions')
 export class QuestionController {
   constructor(private readonly questionService: QuestionService) {}

@@ -136,15 +136,23 @@ export function SurveyBuilderDemo({
   const isDateRangeInvalid = isEndDateBeforeStartDate(startDate, endDate);
   const canSaveCampaign =
     Boolean(companyId) && effectiveCampaignTitle.length >= 3 && !isDateRangeInvalid;
+  const hasQuestions = questions.length > 0;
   const isSurveyReadyForImport = Boolean(
-    campaignId && companyId && status === "active" && campaignMatchesCompany,
+    campaignId && companyId && hasQuestions && status === "active" && campaignMatchesCompany,
   );
+  const importRequirementMessage = getImportRequirementMessage({
+    campaignId,
+    companyId,
+    campaignMatchesCompany,
+    hasQuestions,
+    status,
+  });
   const hasImportedEmployees = Boolean(
     importSuccess && (importSuccess.count > 0 || importSuccess.participants.length > 0),
   );
-  const canActivateCampaign = Boolean(campaignId && questions.length > 0);
+  const canActivateCampaign = Boolean(campaignId && hasQuestions);
   const isAllStepsComplete = Boolean(
-    campaignId && status === "active" && questions.length > 0 && hasImportedEmployees,
+    campaignId && status === "active" && hasQuestions && hasImportedEmployees,
   );
   const builderTitle = mode === "edit" ? "Modifier un sondage" : "Créer un sondage";
 
@@ -182,6 +190,7 @@ export function SurveyBuilderDemo({
     successMessage: string,
     optimistic?: () => void,
     onSuccess?: (result: TResponse) => void,
+    refreshOnSuccess = true,
   ) {
     setFeedback(null);
     setError(null);
@@ -195,7 +204,9 @@ export function SurveyBuilderDemo({
           onSuccess?.(result);
         }
         setFeedback(successMessage);
-        router.refresh();
+        if (refreshOnSuccess) {
+          router.refresh();
+        }
       } catch (caughtError) {
         let errorMessage = "La mise à jour du sondage a échoué. Vérifiez le backend.";
         
@@ -350,11 +361,17 @@ export function SurveyBuilderDemo({
       (result) => {
         setCampaignId(result.id);
         setStatus(result.status ?? "preparation");
-        const params = new URLSearchParams();
-        params.set("tab", "edit");
-        params.set("campaignId", String(result.id));
-        router.push(`/surveys?${params.toString()}`);
+        setCampaigns((current) => [
+          ...current.filter((campaign) => campaign.id !== result.id),
+          {
+            id: result.id,
+            name: effectiveCampaignTitle,
+            status: result.status ?? "preparation",
+            companyId: selectedCompanyId,
+          },
+        ]);
       },
+      false,
     );
   }
 
@@ -369,8 +386,13 @@ export function SurveyBuilderDemo({
       return;
     }
 
+    if (!hasQuestions) {
+      setError("Ajoutez au moins une question au sondage avant d'importer les employés.");
+      return;
+    }
+
     if (status !== "active") {
-      setError("Activez d'abord le sondage avant d'importer les employés.");
+      setError("Activez le sondage après avoir validé les questions, puis importez les employés.");
       return;
     }
 
@@ -1131,6 +1153,13 @@ export function SurveyBuilderDemo({
             >
               Importer
             </button>
+            <p
+              className={`mt-2 text-[11px] leading-5 ${
+                isSurveyReadyForImport ? "text-emerald-700" : "text-amber-700"
+              }`}
+            >
+              {importRequirementMessage}
+            </p>
             {importSuccess ? (
               <p className="mt-2 text-center text-[11px] font-medium text-emerald-700">
                 {importSuccess.count} employé(s) importé(s)
@@ -1836,6 +1865,7 @@ function validateCsvFormat(rawCsv: string): { valid: boolean; errors: string[]; 
 
   let validEmails = 0;
   let emptyEmailCount = 0;
+  const seenEmails = new Map<string, number>();
 
   for (let index = 1; index < lines.length; index += 1) {
     const values = parseCsvLine(lines[index]);
@@ -1847,12 +1877,18 @@ function validateCsvFormat(rawCsv: string): { valid: boolean; errors: string[]; 
 
     if (emailIndex >= 0) {
       const email = values[emailIndex].replace(/^["']|["']$/g, "").trim();
+      const normalizedEmail = email.toLowerCase();
       if (!email) {
         emptyEmailCount++;
         errors.push(`Ligne ${index + 1}: email vide. Tous les employés doivent avoir une adresse email.`);
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errors.push(`Ligne ${index + 1}: email invalide "${email}"`);
+      } else if (seenEmails.has(normalizedEmail)) {
+        errors.push(
+          `Ligne ${index + 1}: email en doublon "${email}" déjà présent ligne ${seenEmails.get(normalizedEmail)}.`,
+        );
       } else {
+        seenEmails.set(normalizedEmail, index + 1);
         validEmails += 1;
       }
     }
@@ -1863,6 +1899,38 @@ function validateCsvFormat(rawCsv: string): { valid: boolean; errors: string[]; 
     errors: errors.slice(0, 6),
     lineCount: lines.length - 1,
   };
+}
+
+function getImportRequirementMessage({
+  campaignId,
+  companyId,
+  campaignMatchesCompany,
+  hasQuestions,
+  status,
+}: {
+  campaignId: number | null;
+  companyId: number | null;
+  campaignMatchesCompany: boolean;
+  hasQuestions: boolean;
+  status: string;
+}) {
+  if (!campaignId || !companyId) {
+    return "Créez et enregistrez le sondage avec son entreprise avant l'import.";
+  }
+
+  if (!campaignMatchesCompany) {
+    return "Sélectionnez le sondage rattaché à cette entreprise avant l'import.";
+  }
+
+  if (!hasQuestions) {
+    return "Ajoutez au moins une question avant d'importer les employés.";
+  }
+
+  if (status !== "active") {
+    return "Activez le sondage après validation des questions, puis importez les employés.";
+  }
+
+  return "Questions validées. Vous pouvez importer les employés.";
 }
 
 function ensureQuestionOptions(question: SurveyQuestion): SurveyQuestion {
