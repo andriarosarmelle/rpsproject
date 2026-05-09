@@ -104,19 +104,29 @@ services:
     image: n8nio/n8n:latest
     restart: unless-stopped
     environment:
+      N8N_USER_FOLDER: ${N8N_USER_FOLDER:-/home/node/.n8n}
+      N8N_HOST: ${N8N_HOST:-n8n}
+      N8N_PORT: ${N8N_PORT:-5678}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
       N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
       N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-changeme}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
-      N8N_HOST: n8n
-      N8N_PORT: 5678
-      N8N_PROTOCOL: http
-      N8N_SECURE_COOKIE: false
-      N8N_PATH: /n8n/
-      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost/n8n/}
+      N8N_PATH: ${N8N_PATH:-/n8n/}
       N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL:-http://localhost/n8n/}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost/n8n/}
+      N8N_LISTEN_ADDRESS: ${N8N_LISTEN_ADDRESS:-0.0.0.0}
+      TZ: ${TZ:-Indian/Antananarivo}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Indian/Antananarivo}
+      DB_TYPE: ${DB_TYPE:-postgresdb}
+      DB_POSTGRESDB_HOST: ${DB_HOST:-postgres}
+      DB_POSTGRESDB_PORT: ${DB_PORT:-5432}
+      DB_POSTGRESDB_DATABASE: ${DB_NAME_N8N:-rps_db}
+      DB_POSTGRESDB_USER: ${DB_USER:-rps_user}
+      DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD:-rps_pass}
     volumes:
-      - n8n_data:/home/node/.n8n
+      - n8n_data:${N8N_USER_FOLDER:-/home/node/.n8n}
     networks:
       - rps_network
 
