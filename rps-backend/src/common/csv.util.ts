@@ -16,6 +16,49 @@ export function normalizeCsvHeader(header: string) {
 }
 
 export function splitCsvLine(line: string): string[] {
+  return splitCsvLineWithDelimiter(line, ',');
+}
+
+export function detectCsvDelimiter(line: string) {
+  const supportedDelimiters = [',', ';', '\t'] as const;
+  let bestDelimiter: (typeof supportedDelimiters)[number] =
+    supportedDelimiters[0];
+  let bestCount = -1;
+
+  for (const delimiter of supportedDelimiters) {
+    let count = 0;
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+
+      if (!inQuotes && char === delimiter) {
+        count += 1;
+      }
+    }
+
+    if (count > bestCount) {
+      bestDelimiter = delimiter;
+      bestCount = count;
+    }
+  }
+
+  return bestDelimiter;
+}
+
+export function splitCsvLineWithDelimiter(
+  line: string,
+  delimiter: ',' | ';' | '\t',
+): string[] {
   const values: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -33,7 +76,7 @@ export function splitCsvLine(line: string): string[] {
       continue;
     }
 
-    if (char === ',' && !inQuotes) {
+    if (char === delimiter && !inQuotes) {
       values.push(current.trim());
       current = '';
       continue;
@@ -64,9 +107,12 @@ export function parseCsvDocument(
   }
 
   const [headerLine, ...dataLines] = lines;
-  const headers = splitCsvLine(headerLine).map(normalizeHeader);
+  const delimiter = detectCsvDelimiter(headerLine);
+  const headers = splitCsvLineWithDelimiter(headerLine, delimiter).map(
+    normalizeHeader,
+  );
   const rows = dataLines.map((line) => {
-    const values = splitCsvLine(line);
+    const values = splitCsvLineWithDelimiter(line, delimiter);
     const row: Record<string, string> = {};
 
     headers.forEach((header, index) => {

@@ -681,13 +681,25 @@ export class CampaignParticipantService {
         }
       }
 
+      const participantRecords =
+        employeeIds.length > 0
+          ? await this.campaignParticipantRepository.find({
+              where: {
+                campaign: { id: campaignId },
+                employee: { id: In(employeeIds) },
+              },
+              relations: { employee: true },
+              order: { id: 'ASC' },
+            })
+          : [];
+
       this.logger.log(
         `[Import] Company names extracted: ${uniqueCompanyNames.join(', ') || 'none'}`,
       );
 
       const result = {
         imported_employees: employees.length,
-        participants: participants.map((p) => {
+        participants: participantRecords.map((p) => {
           let emp: Employee | undefined;
 
           if (p.employee) {
