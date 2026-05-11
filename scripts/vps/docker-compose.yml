@@ -1,21 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${DB_USER:-rps_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-rps_pass}
-      POSTGRES_DB: ${DB_NAME:-rps_db}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rps_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - rps_network
-
   backend:
     build:
       context: ../../rps-backend
@@ -25,7 +8,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       JWT_SECRET: ${JWT_SECRET}
-      DB_HOST: ${DB_HOST:-postgres}
+      DB_HOST: ${DB_HOST:-localhost}
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-rps_user}
       DB_PASSWORD: ${DB_PASSWORD:-rps_pass}
@@ -47,8 +30,6 @@ services:
       N8N_WEBHOOK_PATH: ${N8N_WEBHOOK_PATH:-/webhook/sondage-rps-solutions-tech}
       N8N_HEALTH_REQUIRED: ${N8N_HEALTH_REQUIRED:-false}
     depends_on:
-      postgres:
-        condition: service_healthy
       n8n:
         condition: service_started
     networks:
@@ -120,7 +101,7 @@ services:
       TZ: ${TZ:-Indian/Antananarivo}
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Indian/Antananarivo}
       DB_TYPE: ${DB_TYPE:-postgresdb}
-      DB_POSTGRESDB_HOST: ${DB_HOST:-postgres}
+      DB_POSTGRESDB_HOST: ${DB_HOST:-localhost}
       DB_POSTGRESDB_PORT: ${DB_PORT:-5432}
       DB_POSTGRESDB_DATABASE: ${DB_NAME_N8N:-rps_db}
       DB_POSTGRESDB_USER: ${DB_USER:-rps_user}
@@ -135,8 +116,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
-    driver: local
   nginx_cache:
     driver: local
   nginx_logs:

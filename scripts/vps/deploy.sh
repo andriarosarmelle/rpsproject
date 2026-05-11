@@ -131,6 +131,12 @@ require_command git
 require_command docker
 require_command curl
 require_non_empty JWT_SECRET
+require_non_empty DB_HOST
+require_non_empty DB_PORT
+require_non_empty DB_USER
+require_non_empty DB_PASSWORD
+require_non_empty DB_NAME
+require_non_empty DB_NAME_N8N
 require_non_empty N8N_ENCRYPTION_KEY
 
 echo "=== Starting Docker Compose deployment: $ENV ==="
@@ -247,8 +253,36 @@ docker compose pull --ignore-buildable
 echo "Building application images..."
 docker compose build backend frontend
 
+ensure_external_database_ready() {
+  local maintenance_db="${DB_MAINTENANCE_DB:-postgres}"
+
+  echo "Verifying external database connectivity..."
+  docker compose run --rm \
+    -e DB_HOST="$DB_HOST" \
+    -e DB_PORT="$DB_PORT" \
+    -e DB_USER="$DB_USER" \
+    -e DB_PASSWORD="$DB_PASSWORD" \
+    -e DB_NAME="$maintenance_db" \
+    backend \
+    node -e "const { Client } = require('pg'); (async () => { const client = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME }); await client.connect(); await client.end(); console.log('[db] External database connection OK.'); })().catch((error) => { console.error('[db] External database connection failed:', error.stack || error.message); process.exit(1); });"
+
+  echo "Ensuring application and n8n databases exist..."
+  docker compose run --rm \
+    -e DB_HOST="$DB_HOST" \
+    -e DB_PORT="$DB_PORT" \
+    -e DB_USER="$DB_USER" \
+    -e DB_PASSWORD="$DB_PASSWORD" \
+    -e DB_NAME="$maintenance_db" \
+    -e APP_DB_NAME="$DB_NAME" \
+    -e N8N_APP_DB_NAME="$DB_NAME_N8N" \
+    backend \
+    node -e "const { Client } = require('pg'); const targetDbs = [...new Set([process.env.APP_DB_NAME, process.env.N8N_APP_DB_NAME].filter(Boolean))]; const quoteIdent = (value) => '\"' + value.replace(/\"/g, '\"\"') + '\"'; (async () => { const client = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME }); await client.connect(); for (const targetDb of targetDbs) { const result = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [targetDb]); if (result.rowCount === 0) { await client.query('CREATE DATABASE ' + quoteIdent(targetDb)); console.log('[db] Database created:', targetDb); } else { console.log('[db] Database already exists:', targetDb); } } await client.end(); })().catch((error) => { console.error('[db] Database provisioning failed:', error.stack || error.message); process.exit(1); });"
+}
+
+ensure_external_database_ready
+
 echo "Starting dependencies..."
-docker compose up -d postgres n8n
+docker compose up -d n8n
 
 MIGRATION_RETRIES=8
 MIGRATION_INTERVAL=5
@@ -270,7 +304,7 @@ done
 
 if [ "$MIGRATION_DONE" != "true" ]; then
   echo "ERROR: migrations failed after $MIGRATION_RETRIES attempts"
-  docker compose logs postgres backend --tail 100 || true
+  docker compose logs backend n8n --tail 100 || true
   exit 1
 fi
 
