@@ -112,6 +112,17 @@ resolve_container_db_host() {
   esac
 }
 
+is_local_db_host() {
+  case "${1:-}" in
+    localhost|127.0.0.1|::1)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 if [ -z "$PUBLIC_BASE_URL" ]; then
   if [ -n "$DOMAIN_NAME" ]; then
     PUBLIC_BASE_URL="https://$DOMAIN_NAME"
@@ -157,6 +168,7 @@ echo "=== Starting Docker Compose deployment: $ENV ==="
 echo "Branch: $TARGET_BRANCH"
 echo "Commit: $COMMIT_SHA"
 echo "Public base URL: $PUBLIC_BASE_URL"
+echo "Database host for containers: $CONTAINER_DB_HOST:$DB_PORT"
 
 echo "Fetching latest code from Git..."
 echo "Disk usage before cleanup:"
@@ -270,18 +282,23 @@ docker compose build backend frontend
 ensure_external_database_ready() {
   local maintenance_db="${DB_MAINTENANCE_DB:-postgres}"
 
+  if is_local_db_host "$DB_HOST"; then
+    echo "Database host '$DB_HOST' is local to the VPS; containers will use '$CONTAINER_DB_HOST'."
+    echo "Make sure PostgreSQL listens on the Docker bridge interface and allows connections from containers."
+  fi
+
   echo "Verifying external database connectivity..."
-  docker compose run --rm \
+  docker compose run --rm --no-deps \
     -e DB_HOST="$CONTAINER_DB_HOST" \
     -e DB_PORT="$DB_PORT" \
     -e DB_USER="$DB_USER" \
     -e DB_PASSWORD="$DB_PASSWORD" \
     -e DB_NAME="$maintenance_db" \
     backend \
-    node -e "const { Client } = require('pg'); (async () => { const client = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME }); await client.connect(); await client.end(); console.log('[db] External database connection OK.'); })().catch((error) => { console.error('[db] External database connection failed:', error.stack || error.message); process.exit(1); });"
+    node -e "const { Client } = require('pg'); (async () => { const client = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME, connectionTimeoutMillis: 10000 }); await client.connect(); await client.end(); console.log('[db] External database connection OK.'); })().catch((error) => { console.error('[db] External database connection failed:', error.stack || error.message); console.error('[db] If PostgreSQL runs on the VPS host, ensure it listens beyond localhost and accepts Docker bridge connections.'); process.exit(1); });"
 
   echo "Ensuring application and n8n databases exist..."
-  docker compose run --rm \
+  docker compose run --rm --no-deps \
     -e DB_HOST="$CONTAINER_DB_HOST" \
     -e DB_PORT="$DB_PORT" \
     -e DB_USER="$DB_USER" \
@@ -304,7 +321,7 @@ MIGRATION_DONE=false
 
 for i in $(seq 1 $MIGRATION_RETRIES); do
   echo "Running backend migrations... (attempt $i/$MIGRATION_RETRIES)"
-  if docker compose run --rm backend npm run migration:run:prod; then
+  if docker compose run --rm --no-deps backend npm run migration:run:prod; then
     MIGRATION_DONE=true
     echo "Migration command completed."
     break
