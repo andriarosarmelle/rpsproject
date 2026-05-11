@@ -19,6 +19,7 @@ DOMAIN_NAME="${DOMAIN_NAME:-}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-}"
 
 DB_HOST="${DB_HOST:-postgres}"
+SOURCE_DB_HOST="$DB_HOST"
 DB_PORT="${DB_PORT:-5432}"
 DB_USER="${DB_USER:-rps_user}"
 DB_PASSWORD="${DB_PASSWORD:-rps_pass}"
@@ -273,6 +274,12 @@ fi
 
 cd "$COMPOSE_DIR"
 
+# Docker Compose variable interpolation prefers the current shell environment
+# over the .env file we just wrote. Normalize DB_HOST here so backend/n8n
+# containers use the container-reachable host instead of the original VPS-local
+# value (e.g. localhost).
+export DB_HOST="$CONTAINER_DB_HOST"
+
 echo "Pulling registry images..."
 docker compose pull --ignore-buildable
 
@@ -282,8 +289,8 @@ docker compose build backend frontend
 ensure_external_database_ready() {
   local maintenance_db="${DB_MAINTENANCE_DB:-postgres}"
 
-  if is_local_db_host "$DB_HOST"; then
-    echo "Database host '$DB_HOST' is local to the VPS; containers will use '$CONTAINER_DB_HOST'."
+  if is_local_db_host "$SOURCE_DB_HOST"; then
+    echo "Database host '$SOURCE_DB_HOST' is local to the VPS; containers will use '$CONTAINER_DB_HOST'."
     echo "Make sure PostgreSQL listens on the Docker bridge interface and allows connections from containers."
   fi
 
@@ -361,12 +368,12 @@ wait_for_url() {
   return 1
 }
 
-if ! wait_for_url "backend" "http://127.0.0.1/api/health" 18 5; then
+if ! wait_for_url "backend" "http://127.0.0.1:8787/api/health" 18 5; then
   docker compose logs backend --tail 120 || true
   exit 1
 fi
 
-if ! wait_for_url "frontend" "http://127.0.0.1/login" 12 5; then
+if ! wait_for_url "frontend" "http://127.0.0.1:8787/login" 12 5; then
   docker compose logs frontend nginx --tail 120 || true
   exit 1
 fi
@@ -374,22 +381,22 @@ fi
 if [ "$N8N_BASIC_AUTH_ACTIVE" = "true" ]; then
   if ! curl --fail --silent --show-error --max-time 10 \
     --user "${N8N_BASIC_AUTH_USER}:${N8N_BASIC_AUTH_PASSWORD}" \
-    "http://127.0.0.1/n8n/" >/dev/null 2>&1; then
+    "http://127.0.0.1:8787/n8n/" >/dev/null 2>&1; then
     echo "ERROR: n8n did not respond behind nginx."
     docker compose logs n8n nginx --tail 120 || true
     exit 1
   fi
 else
-  if ! wait_for_url "n8n" "http://127.0.0.1/n8n/" 12 5; then
+  if ! wait_for_url "n8n" "http://127.0.0.1:8787/n8n/" 12 5; then
     docker compose logs n8n nginx --tail 120 || true
     exit 1
   fi
 fi
 
 echo "Running final smoke tests..."
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1/api/health >/dev/null
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1/login >/dev/null
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1/results >/dev/null
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8787/api/health >/dev/null
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8787/login >/dev/null
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8787/results >/dev/null
 
 echo "Deployment status:"
 docker compose ps
