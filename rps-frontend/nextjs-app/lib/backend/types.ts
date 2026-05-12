@@ -28,9 +28,9 @@ export type BackendCampaign = {
 
 export type BackendEmployee = {
   id: number;
-  first_name: string;
-  last_name: string;
-  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
   phone: string | null;
   status: string;
   department: string | null;
@@ -61,9 +61,9 @@ export type BackendQuestionnaire = {
   completed_at: string | null;
   employee: {
     id: number;
-    first_name: string;
-    last_name: string;
-    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
     department: string | null;
   };
   campaign: {
@@ -91,9 +91,9 @@ export type BackendCampaignParticipant = {
   created_at: string;
   employee: {
     id: number;
-    first_name: string;
-    last_name: string;
-    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
     department: string | null;
   };
 };

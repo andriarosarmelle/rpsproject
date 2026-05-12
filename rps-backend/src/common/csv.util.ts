@@ -4,6 +4,8 @@ export type ParsedCsvDocument = {
   dataLineCount: number;
 };
 
+type CsvDelimiter = ',' | ';' | '\t';
+
 export function normalizeCsvHeader(header: string) {
   return header
     .replace(/^\uFEFF/, '')
@@ -15,7 +17,42 @@ export function normalizeCsvHeader(header: string) {
     .replace(/^_+|_+$/g, '');
 }
 
-export function splitCsvLine(line: string): string[] {
+export function detectCsvDelimiter(line: string): CsvDelimiter {
+  const supportedDelimiters: CsvDelimiter[] = [',', ';', '\t'];
+  let bestDelimiter: CsvDelimiter = ',';
+  let bestCount = -1;
+
+  for (const delimiter of supportedDelimiters) {
+    let count = 0;
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+
+      if (!inQuotes && char === delimiter) {
+        count += 1;
+      }
+    }
+
+    if (count > bestCount) {
+      bestDelimiter = delimiter;
+      bestCount = count;
+    }
+  }
+
+  return bestDelimiter;
+}
+
+export function splitCsvLine(line: string, delimiter: CsvDelimiter = ','): string[] {
   const values: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -33,7 +70,7 @@ export function splitCsvLine(line: string): string[] {
       continue;
     }
 
-    if (char === ',' && !inQuotes) {
+    if (char === delimiter && !inQuotes) {
       values.push(current.trim());
       current = '';
       continue;
@@ -64,9 +101,10 @@ export function parseCsvDocument(
   }
 
   const [headerLine, ...dataLines] = lines;
-  const headers = splitCsvLine(headerLine).map(normalizeHeader);
+  const delimiter = detectCsvDelimiter(headerLine);
+  const headers = splitCsvLine(headerLine, delimiter).map(normalizeHeader);
   const rows = dataLines.map((line) => {
-    const values = splitCsvLine(line);
+    const values = splitCsvLine(line, delimiter);
     const row: Record<string, string> = {};
 
     headers.forEach((header, index) => {

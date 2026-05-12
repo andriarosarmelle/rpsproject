@@ -345,10 +345,7 @@ export async function getEmployeeManagementData(
   if (!isMockBackendEnabled()) {
     try {
       const campaigns = await getBackendCollection<BackendCampaign>("/campaigns");
-      const activeCampaign =
-        (campaignId ? campaigns.find((item) => item.id === campaignId) : null) ??
-        campaigns.find((item) => item.status === "active") ??
-        campaigns[0];
+      const activeCampaign = resolveSelectedCampaign(campaigns, campaignId);
 
       if (!activeCampaign) {
         return buildEmptyEmployeeManagementData();
@@ -371,9 +368,9 @@ export async function getEmployeeManagementData(
         participants: progress.participants.map((participant) => ({
             id: participant.id,
             employeeId: participant.employee.id,
-            name: `${participant.employee.first_name} ${participant.employee.last_name}`.trim(),
-            email: participant.employee.email,
-            department: participant.employee.department ?? "Non renseigne",
+            name: getBackendEmployeeName(participant.employee),
+            email: getBackendEmployeeEmail(participant.employee),
+            department: getBackendEmployeeDepartment(participant.employee),
             status: participant.status,
             responseStatus:
               participant.status === "completed" ? "Responded" : "Not responded",
@@ -562,10 +559,12 @@ export async function getSurveyResponseData(
     return {
       participantToken: null,
       employeeId: employeeEntries[0]?.id ?? 1,
-      employeeName:
-        `${employeeEntries[0]?.first_name ?? ""} ${employeeEntries[0]?.last_name ?? ""}`.trim() ||
-        "Salarie",
-      employeeTitle: employeeEntries[0]?.department ?? "Collaborateur",
+      employeeName: employeeEntries[0]
+        ? getBackendEmployeeName(employeeEntries[0])
+        : "Salarie",
+      employeeTitle: employeeEntries[0]
+        ? getBackendEmployeeDepartment(employeeEntries[0], "Collaborateur")
+        : "Collaborateur",
       companyName: currentCampaign.companyName,
       campaignName: currentCampaign.title,
       status: "pending",
@@ -596,8 +595,8 @@ function mapBackendQuestionnaire(entry: BackendQuestionnaire): SurveyResponseDat
   return {
     participantToken: entry.token,
     employeeId: entry.employee.id,
-    employeeName: `${entry.employee.first_name} ${entry.employee.last_name}`.trim(),
-    employeeTitle: entry.employee.department ?? "Collaborateur",
+    employeeName: getBackendEmployeeName(entry.employee),
+    employeeTitle: getBackendEmployeeDepartment(entry.employee, "Collaborateur"),
     companyName: entry.campaign.company?.name ?? "Entreprise",
     campaignName: entry.campaign.name,
     status: entry.status,
@@ -688,15 +687,14 @@ function mapBackendQuestion(entry: BackendQuestion): SurveyQuestion {
 }
 
 function mapBackendEmployee(entry: BackendEmployee): EmployeeRecord {
-  const fullName = `${entry.first_name ?? ""} ${entry.last_name ?? ""}`.trim();
   const responseStatus = (entry.responses?.length ?? 0) > 0 ? "Responded" : "Not responded";
 
   return {
     id: entry.id,
     documentId: `employee-${entry.id}`,
-    name: fullName || "Employe",
-    email: entry.email,
-    department: entry.department ?? "Non renseigne",
+    name: getBackendEmployeeName(entry),
+    email: getBackendEmployeeEmail(entry),
+    department: getBackendEmployeeDepartment(entry),
     stressScore: computeStressScore(entry.responses ?? []),
     responseStatus,
   };
@@ -878,7 +876,7 @@ function buildDepartmentDistributionFromParticipants(progress: BackendCampaignPr
   const totals = new Map<string, number>();
 
   for (const participant of progress.participants) {
-    const department = participant.employee.department ?? "Non renseigne";
+    const department = getBackendEmployeeDepartment(participant.employee);
     totals.set(department, (totals.get(department) ?? 0) + 1);
   }
 
@@ -1044,10 +1042,12 @@ function resolveSelectedCampaign(
   campaigns: BackendCampaign[],
   campaignId?: number | null,
 ) {
+  const campaignsByRecency = [...campaigns].sort(sortCampaignsByRecency);
+
   return (
     (campaignId ? campaigns.find((item) => item.id === campaignId) : null) ??
-    campaigns.find((item) => item.status === "active") ??
-    campaigns[0]
+    campaignsByRecency.find((item) => item.status === "active") ??
+    campaignsByRecency[0]
   );
 }
 
@@ -1104,15 +1104,13 @@ function buildCampaignEmployeeRecords(
 
   return progress.participants.map((participant) => {
     const employeeResponses = responsesByEmployee.get(participant.employee.id) ?? [];
-    const fullName =
-      `${participant.employee.first_name ?? ""} ${participant.employee.last_name ?? ""}`.trim();
 
     return {
       id: participant.employee.id,
       documentId: `employee-${participant.employee.id}`,
-      name: fullName || "Employe",
-      email: participant.employee.email,
-      department: participant.employee.department ?? "Non renseigne",
+      name: getBackendEmployeeName(participant.employee),
+      email: getBackendEmployeeEmail(participant.employee),
+      department: getBackendEmployeeDepartment(participant.employee),
       stressScore: computeStressScore(employeeResponses),
       responseStatus:
         participant.status === "completed" || employeeResponses.length > 0
@@ -1120,4 +1118,33 @@ function buildCampaignEmployeeRecords(
           : "Not responded",
     } satisfies EmployeeRecord;
   });
+}
+
+function cleanBackendText(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function getBackendEmployeeName(
+  employee: Pick<BackendEmployee, "id" | "first_name" | "last_name">,
+) {
+  const name = [
+    cleanBackendText(employee.first_name),
+    cleanBackendText(employee.last_name),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return name || `Employe #${employee.id}`;
+}
+
+function getBackendEmployeeEmail(employee: Pick<BackendEmployee, "email">) {
+  return cleanBackendText(employee.email) ?? "Email non renseigne";
+}
+
+function getBackendEmployeeDepartment(
+  employee: Pick<BackendEmployee, "department">,
+  fallback = "Non renseigne",
+) {
+  return cleanBackendText(employee.department) ?? fallback;
 }
