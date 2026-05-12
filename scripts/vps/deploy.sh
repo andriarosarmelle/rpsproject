@@ -371,8 +371,27 @@ wait_for_url() {
   return 1
 }
 
-if ! wait_for_url "backend" "http://127.0.0.1:8787/api/health" 18 5; then
-  echo "Backend is running but not reachable through nginx on 127.0.0.1:8787."
+wait_for_nginx_path() {
+  local name="$1"
+  local path="$2"
+  local retries="$3"
+  local interval="$4"
+
+  for i in $(seq 1 "$retries"); do
+    echo "Checking ${name} through nginx... (attempt $i/$retries)"
+    if docker compose exec -T nginx sh -lc "wget -qO- http://127.0.0.1:8786${path} >/dev/null"; then
+      echo "$name is ready through nginx."
+      return 0
+    fi
+    sleep "$interval"
+  done
+
+  echo "ERROR: ${name} did not become ready through nginx."
+  return 1
+}
+
+if ! wait_for_nginx_path "backend" "/api/health" 18 5; then
+  echo "Backend is running but nginx could not serve /api/health."
   echo "Collecting direct container and nginx diagnostics..."
   docker compose exec -T backend sh -lc "node -e \"fetch('http://127.0.0.1:3000/api/health').then(async (response) => { console.log('[backend direct]', response.status, await response.text()); }).catch((error) => { console.error('[backend direct] request failed:', error.message); process.exit(1); })\"" || true
   docker compose exec -T nginx sh -lc "wget -qO- http://127.0.0.1:8786/api/health || true" || true
@@ -381,30 +400,28 @@ if ! wait_for_url "backend" "http://127.0.0.1:8787/api/health" 18 5; then
   exit 1
 fi
 
-if ! wait_for_url "frontend" "http://127.0.0.1:8787/login" 12 5; then
+if ! wait_for_nginx_path "frontend" "/login" 12 5; then
   docker compose logs frontend nginx --tail 120 || true
   exit 1
 fi
 
 if [ "$N8N_BASIC_AUTH_ACTIVE" = "true" ]; then
-  if ! curl --fail --silent --show-error --max-time 10 \
-    --user "${N8N_BASIC_AUTH_USER}:${N8N_BASIC_AUTH_PASSWORD}" \
-    "http://127.0.0.1:8787/n8n/" >/dev/null 2>&1; then
+  if ! docker compose exec -T nginx sh -lc "wget -qO- --user='${N8N_BASIC_AUTH_USER}' --password='${N8N_BASIC_AUTH_PASSWORD}' http://127.0.0.1:8786/n8n/ >/dev/null"; then
     echo "ERROR: n8n did not respond behind nginx."
     docker compose logs n8n nginx --tail 120 || true
     exit 1
   fi
 else
-  if ! wait_for_url "n8n" "http://127.0.0.1:8787/n8n/" 12 5; then
+  if ! wait_for_nginx_path "n8n" "/n8n/" 12 5; then
     docker compose logs n8n nginx --tail 120 || true
     exit 1
   fi
 fi
 
 echo "Running final smoke tests..."
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8787/api/health >/dev/null
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8787/login >/dev/null
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8787/results >/dev/null
+docker compose exec -T nginx sh -lc "wget -qO- http://127.0.0.1:8786/api/health >/dev/null"
+docker compose exec -T nginx sh -lc "wget -qO- http://127.0.0.1:8786/login >/dev/null"
+docker compose exec -T nginx sh -lc "wget -qO- http://127.0.0.1:8786/results >/dev/null"
 
 echo "Deployment status:"
 docker compose ps
