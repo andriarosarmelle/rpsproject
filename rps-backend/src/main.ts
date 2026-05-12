@@ -6,7 +6,6 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import csurf from 'csurf';
 import { AppModule } from './app.module';
 import { WinstonLoggerService } from './common/winston-logger.service';
 
@@ -17,18 +16,21 @@ async function bootstrap() {
   });
   const apiPrefix = 'api';
   const swaggerPath = process.env.SWAGGER_PATH ?? 'api-docs';
+  app.setGlobalPrefix(apiPrefix);
 
   // Security middleware
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "https:"],
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
       },
-    },
-  }));
+    }),
+  );
 
   // CSRF protection - disable for API routes that don't use cookies for auth
   // We'll enable it selectively for form-based submissions if needed
@@ -62,10 +64,7 @@ async function bootstrap() {
 
   // Global headers
   app.use((request: Request, response: Response, next: NextFunction) => {
-    if (
-      request.originalUrl.startsWith(`/${swaggerPath}`) ||
-      request.originalUrl.startsWith(`/${apiPrefix}/${swaggerPath}`)
-    ) {
+    if (request.originalUrl.startsWith(`/${apiPrefix}/${swaggerPath}`)) {
       next();
       return;
     }
