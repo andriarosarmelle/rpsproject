@@ -53,6 +53,8 @@ GENERIC_TIMEZONE="${GENERIC_TIMEZONE:-Indian/Antananarivo}"
 DB_TYPE="${DB_TYPE:-postgresdb}"
 DB_NAME_N8N="${DB_NAME_N8N:-$DB_NAME}"
 N8N_WEBHOOK_PATH="${N8N_WEBHOOK_PATH:-/webhook/sondage-rps-solutions-tech}"
+N8N_INVITATION_WEBHOOK_URL="${N8N_INVITATION_WEBHOOK_URL:-}"
+N8N_INVITATION_WEBHOOK_PATH="${N8N_INVITATION_WEBHOOK_PATH:-/webhook/send-survey-invitations}"
 N8N_HEALTH_REQUIRED="${N8N_HEALTH_REQUIRED:-false}"
 
 NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-}"
@@ -103,7 +105,7 @@ if [ -z "$NEXT_PUBLIC_APP_URL" ]; then
 fi
 
 if [ -z "$NEXT_PUBLIC_API_URL" ]; then
-  NEXT_PUBLIC_API_URL="$PUBLIC_BASE_URL/api"
+  NEXT_PUBLIC_API_URL="$PUBLIC_BASE_URL/backend-api"
 fi
 
 if [ -z "$N8N_EDITOR_BASE_URL" ]; then
@@ -202,6 +204,8 @@ DB_POSTGRESDB_PASSWORD=$DB_PASSWORD
 N8N_BASE_URL=$N8N_PROTOCOL://$N8N_HOST:$N8N_PORT${N8N_PATH%/}
 N8N_WEBHOOK_URL=$N8N_PROTOCOL://$N8N_HOST:$N8N_PORT${N8N_PATH%/}
 N8N_WEBHOOK_PATH=$N8N_WEBHOOK_PATH
+N8N_INVITATION_WEBHOOK_URL=$N8N_INVITATION_WEBHOOK_URL
+N8N_INVITATION_WEBHOOK_PATH=$N8N_INVITATION_WEBHOOK_PATH
 N8N_HEALTH_REQUIRED=$N8N_HEALTH_REQUIRED
 N8N_EDITOR_BASE_URL=$N8N_EDITOR_BASE_URL
 WEBHOOK_URL=$WEBHOOK_URL
@@ -279,7 +283,7 @@ wait_for_url() {
   return 1
 }
 
-if ! wait_for_url "backend" "http://127.0.0.1/api/health" 18 5; then
+if ! wait_for_url "backend" "http://127.0.0.1/backend-api/health" 18 5; then
   docker compose logs backend --tail 120 || true
   exit 1
 fi
@@ -305,7 +309,7 @@ else
 fi
 
 echo "Running final smoke tests..."
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1/api/health >/dev/null
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1/backend-api/health >/dev/null
 curl --fail --silent --show-error --max-time 10 http://127.0.0.1/login >/dev/null
 curl --fail --silent --show-error --max-time 10 http://127.0.0.1/results >/dev/null
 

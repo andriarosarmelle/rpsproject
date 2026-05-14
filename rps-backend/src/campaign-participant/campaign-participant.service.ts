@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Injectable,
   Logger,
@@ -11,6 +12,7 @@ import { Campaign } from '../campaign/campaign.entity';
 import { parseCsvDocument } from '../common/csv.util';
 import { throwPersistenceError } from '../common/database-error.util';
 import { Employee } from '../employee/employee.entity';
+import { getN8nInvitationWebhookUrl } from '../n8n/n8n.config';
 import { Question } from '../question/question.entity';
 import { SurveyResponse } from '../response/response.entity';
 import {
@@ -21,6 +23,7 @@ import {
   CreateCampaignParticipantDto,
   ImportCampaignEmployeeRowDto,
   ImportCampaignEmployeesDto,
+  SendCampaignInvitationsDto,
   SendCampaignRemindersDto,
   SubmitCampaignResponsesDto,
   UpdateCampaignParticipantDto,
@@ -614,7 +617,7 @@ export class CampaignParticipantService {
                 campaign,
                 employee,
                 participation_token: randomUUID(),
-                invitation_sent_at: payload.invitation_sent_at ?? new Date(),
+                invitation_sent_at: payload.invitation_sent_at ?? null,
                 reminder_sent_at: null,
                 completed_at: null,
                 status: CampaignParticipantStatus.PENDING,
@@ -754,6 +757,118 @@ export class CampaignParticipantService {
     }
   }
 
+  async sendInvitations(
+    campaignId: number,
+    options: SendCampaignInvitationsDto = {},
+  ) {
+    const webhookUrl = getN8nInvitationWebhookUrl();
+
+    if (!webhookUrl) {
+      throw new BadRequestException(
+        'N8N invitation webhook is not configured. Set N8N_INVITATION_WEBHOOK_URL or N8N_INVITATION_WEBHOOK_PATH.',
+      );
+    }
+
+    const appUrl = this.resolveAppUrl(options.app_url);
+    const participants = await this.campaignParticipantRepository.find({
+      where: {
+        campaign: { id: campaignId },
+        employee: { deleted_at: IsNull() },
+      },
+      relations: {
+        campaign: { company: true },
+        employee: true,
+      },
+      order: { id: 'ASC' },
+    });
+
+    if (!participants.length) {
+      throw new NotFoundException(
+        `No participants found for campaign ${campaignId}`,
+      );
+    }
+
+    await this.ensureParticipationTokens(participants);
+
+    const eligibleParticipants = participants.filter((participant) => {
+      if (!participant.employee?.email?.trim()) {
+        return false;
+      }
+
+      if (participant.status === CampaignParticipantStatus.COMPLETED) {
+        return false;
+      }
+
+      return options.force || !participant.invitation_sent_at;
+    });
+
+    if (!eligibleParticipants.length) {
+      return {
+        campaign_id: campaignId,
+        sent_count: 0,
+        skipped_count: participants.length,
+        recipients: [],
+        message: 'No pending invitations to send',
+      };
+    }
+
+    const sentAt = new Date();
+    const firstCampaign = eligibleParticipants[0].campaign;
+    const recipients = eligibleParticipants.map((participant) => ({
+      participant_id: participant.id,
+      employee_id: participant.employee.id,
+      email: participant.employee.email?.trim() ?? '',
+      name: this.getEmployeeDisplayName(participant.employee),
+      department: participant.employee.department ?? '',
+      participation_token: participant.participation_token,
+      survey_url: this.buildSurveyUrl(appUrl, participant.participation_token),
+    }));
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'survey_invitations',
+          sent_at: sentAt.toISOString(),
+          app_url: appUrl,
+          campaign: {
+            id: firstCampaign.id,
+            name: firstCampaign.name,
+            company: firstCampaign.company?.name ?? '',
+          },
+          recipients,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(
+          `n8n invitation webhook failed: ${response.status} ${response.statusText} ${body}`.trim(),
+        );
+      }
+    } catch (error) {
+      this.logger.error('Failed to send survey invitations through n8n', error);
+      throw new BadGatewayException(
+        "Echec de l'envoi des invitations. Verifiez que le webhook n8n d'invitation est actif.",
+      );
+    }
+
+    for (const participant of eligibleParticipants) {
+      participant.invitation_sent_at = sentAt;
+    }
+
+    await this.campaignParticipantRepository.save(eligibleParticipants);
+
+    return {
+      campaign_id: campaignId,
+      sent_count: eligibleParticipants.length,
+      skipped_count: participants.length - eligibleParticipants.length,
+      recipients,
+      message: 'Survey invitations sent successfully',
+    };
+  }
+
   async sendReminders(
     campaignId: number,
     options: SendCampaignRemindersDto = {},
@@ -801,6 +916,34 @@ export class CampaignParticipantService {
       reminded_count: pendingParticipants.length,
       reminded_participants: pendingParticipants,
     };
+  }
+
+  private resolveAppUrl(appUrl?: string) {
+    const configuredUrl =
+      appUrl?.trim() ||
+      process.env.APP_URL?.trim() ||
+      process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+    if (!configuredUrl) {
+      throw new BadRequestException(
+        "APP_URL is required to build survey links for invitations.",
+      );
+    }
+
+    return configuredUrl.replace(/\/+$/, '');
+  }
+
+  private buildSurveyUrl(appUrl: string, token: string) {
+    return `${appUrl}/survey-response/${encodeURIComponent(token)}`;
+  }
+
+  private getEmployeeDisplayName(employee: Employee) {
+    const name = [employee.first_name, employee.last_name]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ');
+
+    return name || employee.email?.trim() || 'Employe';
   }
 
   private async saveImportedEmployee(
@@ -871,7 +1014,30 @@ export class CampaignParticipantService {
       return false;
     }
 
-    const errorLike = error as {
+    const outerError = error as {
+      code?: unknown;
+      constraint?: unknown;
+      detail?: unknown;
+      driverError?: unknown;
+      message?: unknown;
+    };
+    const driverError =
+      outerError.driverError && typeof outerError.driverError === 'object'
+        ? (outerError.driverError as {
+            code?: unknown;
+            constraint?: unknown;
+            detail?: unknown;
+            message?: unknown;
+          })
+        : undefined;
+    const errorLike = {
+      code: driverError?.code ?? outerError.code,
+      constraint: driverError?.constraint ?? outerError.constraint,
+      detail: driverError?.detail ?? outerError.detail,
+      message: [outerError.message, driverError?.message]
+        .filter((value): value is string => typeof value === 'string')
+        .join(' '),
+    } as {
       code?: unknown;
       constraint?: unknown;
       detail?: unknown;

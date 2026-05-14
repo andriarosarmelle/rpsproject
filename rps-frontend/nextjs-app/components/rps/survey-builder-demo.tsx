@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, GripHorizontal } from "lucide-react";
+import { AlertTriangle, CheckCircle2, GripHorizontal, Mail } from "lucide-react";
 import { Card, PrimaryButton, SecondaryButton } from "@/components/rps/ui";
 import type { SurveyBuilderData } from "@/lib/repositories/rps-repository";
 import type { SurveyQuestion } from "@/lib/strapi/mappers";
@@ -35,6 +35,13 @@ type ImportedParticipantPayload = {
 type ImportEmployeesResponse = {
   imported_employees?: number;
   participants?: ImportedParticipantPayload[];
+};
+
+type SendInvitationsResponse = {
+  sent_count?: number;
+  skipped_count?: number;
+  recipients?: Array<{ email: string; survey_url: string }>;
+  message?: string;
 };
 
 type SurveyQuestionType = "scale" | "choice" | "text" | "section";
@@ -132,6 +139,9 @@ export function SurveyBuilderDemo({
     participants: Array<{ name: string; email: string; link: string }>;
   } | null>(null);
   const [hasDownloadedLinks, setHasDownloadedLinks] = useState(false);
+  const [hasSentInvitations, setHasSentInvitations] = useState(false);
+  const [invitationFeedback, setInvitationFeedback] = useState<string | null>(null);
+  const [invitationError, setInvitationError] = useState<string | null>(null);
   const canEditQuestions = status !== "active";
   const isCreateMode = mode === "create";
   const selectedCompanyName =
@@ -193,6 +203,9 @@ export function SurveyBuilderDemo({
     setImportValidationErrors([]);
     setImportSuccess(null);
     setHasDownloadedLinks(false);
+    setHasSentInvitations(false);
+    setInvitationFeedback(null);
+    setInvitationError(null);
     setSelectedFileName(null);
   }, [hydrateInitialCampaign, initialData, mode]);
   function runMutation<TResponse>(
@@ -253,7 +266,7 @@ export function SurveyBuilderDemo({
     );
 
     if (alreadyExists) {
-      setError("Cette entreprise existe déjà. Selectionne-la dans la liste.");
+      setError("Cette entreprise existe déjà. Sélectionne-la dans la liste.");
       return;
     }
 
@@ -272,6 +285,9 @@ export function SurveyBuilderDemo({
         setQuestions([]);
         setImportSuccess(null);
         setHasDownloadedLinks(false);
+        setHasSentInvitations(false);
+        setInvitationFeedback(null);
+        setInvitationError(null);
         setNewCompanyName("");
       },
     );
@@ -310,6 +326,9 @@ export function SurveyBuilderDemo({
       setQuestions([]);
       setImportSuccess(null);
       setHasDownloadedLinks(false);
+      setHasSentInvitations(false);
+      setInvitationFeedback(null);
+      setInvitationError(null);
       return;
     }
     
@@ -396,7 +415,7 @@ export function SurveyBuilderDemo({
     }
 
     if (!campaignMatchesCompany) {
-      setError("Le sondage selectionne n'appartient pas a cette entreprise. Enregistrez ou selectionnez le bon sondage avant l'import.");
+      setError("Le sondage sélectionné n'appartient pas à cette entreprise. Enregistrez ou sélectionnez le bon sondage avant l'import.");
       return;
     }
 
@@ -413,6 +432,8 @@ export function SurveyBuilderDemo({
     setImportError(null);
     setImportFeedback(null);
     setHasDownloadedLinks(false);
+    setInvitationFeedback(null);
+    setInvitationError(null);
     setIsImportModalOpen(true);
   }
 
@@ -435,6 +456,8 @@ export function SurveyBuilderDemo({
     setImportError(null);
     setImportFeedback(null);
     setImportValidationErrors([]);
+    setInvitationFeedback(null);
+    setInvitationError(null);
     setSelectedFileName(file.name);
 
     try {
@@ -594,8 +617,8 @@ export function SurveyBuilderDemo({
     copyToClipboard(links).then((copied) => {
       setImportFeedback(
         copied
-          ? "Tous les liens ont ete copies dans le presse-papiers."
-          : "La copie automatique n'est pas disponible dans ce navigateur. Telechargez la liste des liens.",
+          ? "Tous les liens ont été copiés dans le presse-papiers."
+          : "La copie automatique n'est pas disponible dans ce navigateur. Téléchargez la liste des liens.",
       );
     });
   }
@@ -643,7 +666,7 @@ export function SurveyBuilderDemo({
     }
 
     if (!campaignMatchesCompany) {
-      setImportError("Le sondage selectionne n'appartient pas a cette entreprise. Enregistrez ou selectionnez le bon sondage avant l'import.");
+      setImportError("Le sondage sélectionné n'appartient pas à cette entreprise. Enregistrez ou sélectionnez le bon sondage avant l'import.");
       return;
     }
 
@@ -707,6 +730,9 @@ export function SurveyBuilderDemo({
           participants,
         });
         setHasDownloadedLinks(false);
+        setHasSentInvitations(false);
+        setInvitationFeedback(null);
+        setInvitationError(null);
         setImportFeedback("Import terminé. Vous pouvez maintenant télécharger la liste des employés avec leurs liens respectifs.");
         router.refresh();
       } catch (caughtError) {
@@ -721,6 +747,43 @@ export function SurveyBuilderDemo({
         }
 
         setImportError(errorMessage);
+      }
+    });
+  }
+
+  function handleSendSurveyInvitations() {
+    if (!campaignId) {
+      setInvitationError("Aucun sondage n'est sélectionné pour l'envoi.");
+      return;
+    }
+
+    setInvitationError(null);
+    setInvitationFeedback(null);
+
+    startTransition(async () => {
+      try {
+        const rawResult = await getTrpcClient().campaignParticipants.sendInvitations.mutate({
+          campaignId,
+          appUrl: window.location.origin,
+          force: true,
+        });
+        const result = rawResult as SendInvitationsResponse;
+        const sentCount = result.sent_count ?? result.recipients?.length ?? 0;
+        const skippedCount = result.skipped_count ?? 0;
+
+        setHasSentInvitations(sentCount > 0);
+        setInvitationFeedback(
+          skippedCount > 0
+            ? `${sentCount} invitation(s) envoyée(s), ${skippedCount} participant(s) ignoré(s).`
+            : `${sentCount} invitation(s) envoyée(s) par email.`,
+        );
+        router.refresh();
+      } catch (caughtError) {
+        setInvitationError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "L'envoi des invitations a échoué.",
+        );
       }
     });
   }
@@ -1699,12 +1762,34 @@ export function SurveyBuilderDemo({
                     {importSuccess.count} employé(s) importé(s)
                   </h4>
                   <p className="mt-2 text-sm text-slate-600">
-                    L&apos;import est terminé. Vous pouvez maintenant télécharger la liste des liens.
+                    L&apos;import est terminé. Envoyez les invitations par email ou téléchargez la liste des liens.
                   </p>
+                  {invitationFeedback ? (
+                    <p className="mt-3 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                      {invitationFeedback}
+                    </p>
+                  ) : null}
+                  {invitationError ? (
+                    <p className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {invitationError}
+                    </p>
+                  ) : null}
                   <div className="mt-4 flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
-                    <PrimaryButton onClick={downloadLinksList} className="w-full sm:w-auto">
-                      Télécharger la liste
+                    <PrimaryButton
+                      onClick={handleSendSurveyInvitations}
+                      disabled={isPending || hasSentInvitations || importSuccess.participants.length === 0}
+                      className="flex w-full items-center justify-center gap-2 sm:w-auto"
+                    >
+                      <Mail className="h-4 w-4" />
+                      {hasSentInvitations
+                        ? "Invitations envoyées"
+                        : isPending
+                          ? "Envoi en cours..."
+                          : "Envoyer par email"}
                     </PrimaryButton>
+                    <SecondaryButton onClick={downloadLinksList} className="w-full sm:w-auto">
+                      Télécharger la liste
+                    </SecondaryButton>
                     <SecondaryButton onClick={copyAllLinks} className="w-full sm:w-auto">Copier tous les liens</SecondaryButton>
                   </div>
                   <div className="mt-4 sm:mt-5 max-h-60 sm:max-h-72 space-y-2 sm:space-y-3 overflow-y-auto">
@@ -1726,8 +1811,8 @@ export function SurveyBuilderDemo({
                             copyToClipboard(participant.link).then((copied) => {
                               setImportFeedback(
                                 copied
-                                  ? `Lien copie pour ${participant.name}.`
-                                  : "La copie automatique n'est pas disponible dans ce navigateur. Telechargez la liste des liens.",
+                                  ? `Lien copié pour ${participant.name}.`
+                                  : "La copie automatique n'est pas disponible dans ce navigateur. Téléchargez la liste des liens.",
                               );
                             })
                           }
@@ -1768,12 +1853,12 @@ function validateCsvFormat(rawCsv: string): { valid: boolean; errors: string[]; 
   const lines = csv.split("\n").filter((line) => line.trim());
 
   if (lines.length === 0) {
-    errors.push("Le fichier est vide. Veuillez ajouter des donnees.");
+    errors.push("Le fichier est vide. Veuillez ajouter des données.");
     return { valid: false, errors, lineCount: 0 };
   }
 
   if (lines.length < 2) {
-    errors.push("Le CSV doit contenir un en-tete et au moins une ligne de donnees.");
+    errors.push("Le CSV doit contenir un en-tête et au moins une ligne de données.");
     return { valid: false, errors, lineCount: 0 };
   }
 

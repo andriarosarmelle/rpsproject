@@ -10,6 +10,10 @@ import { IsNull, Repository } from 'typeorm';
 import { SurveyResponse } from '../response/response.entity';
 import { throwPersistenceError } from '../common/database-error.util';
 import { Company } from '../company/company.entity';
+import {
+  CampaignParticipant,
+  CampaignParticipantStatus,
+} from '../campaign-participant/campaign-participant.entity';
 import { getN8nWebhookUrl } from '../n8n/n8n.config';
 import {
   campaignStatuses,
@@ -18,6 +22,24 @@ import {
   UpdateCampaignDto,
 } from './dto/campaign.dto';
 import { Campaign } from './campaign.entity';
+
+type N8nParticipantStatusRow = {
+  participant_id: number;
+  employee_id: number | null;
+  email: string;
+  name: string;
+  first_name: string;
+  last_name: string;
+  employer: string;
+  function: string;
+  participation_status: CampaignParticipantStatus;
+  response_status: 'responded' | 'not_responded';
+  responded: boolean;
+  response_count: number;
+  invitation_sent_at: Date | null;
+  reminder_sent_at: Date | null;
+  completed_at: Date | null;
+};
 
 @Injectable()
 export class CampaignService {
@@ -31,6 +53,8 @@ export class CampaignService {
     private readonly companyRepository: Repository<Company>,
     @InjectRepository(SurveyResponse)
     private readonly responseRepository: Repository<SurveyResponse>,
+    @InjectRepository(CampaignParticipant)
+    private readonly campaignParticipantRepository: Repository<CampaignParticipant>,
   ) {
     this.n8nWebhookUrl = getN8nWebhookUrl();
   }
@@ -276,6 +300,87 @@ export class CampaignService {
     return Array.from(employeeMap.values());
   }
 
+  /**
+   * Retourne tous les participants d'une campagne, y compris ceux qui n'ont pas
+   * encore repondu, pour que n8n puisse distinguer clairement les statuts.
+   */
+  private async getCampaignParticipantStatuses(
+    campaignId: number,
+    defaultCompanyName: string,
+  ): Promise<N8nParticipantStatusRow[]> {
+    const participants = await this.campaignParticipantRepository.find({
+      where: {
+        campaign: { id: campaignId },
+        employee: { deleted_at: IsNull() },
+      },
+      relations: { employee: true },
+      order: { id: 'ASC' },
+    });
+
+    if (participants.length === 0) {
+      return [];
+    }
+
+    const responses = await this.responseRepository.find({
+      where: {
+        employee: {
+          campaign_participations: {
+            campaign: { id: campaignId },
+          },
+        },
+        question: {
+          campaign: { id: campaignId },
+        },
+        deleted_at: IsNull(),
+      },
+      relations: ['employee', 'question'],
+    });
+    const responseCountByEmployeeId = new Map<number, number>();
+
+    for (const response of responses) {
+      const employeeId = response.employee?.id;
+      if (!employeeId) {
+        continue;
+      }
+
+      responseCountByEmployeeId.set(
+        employeeId,
+        (responseCountByEmployeeId.get(employeeId) ?? 0) + 1,
+      );
+    }
+
+    return participants.map((participant) => {
+      const employee = participant.employee;
+      const responseCount = employee
+        ? (responseCountByEmployeeId.get(employee.id) ?? 0)
+        : 0;
+      const responded =
+        participant.status === CampaignParticipantStatus.COMPLETED ||
+        Boolean(participant.completed_at) ||
+        responseCount > 0;
+      const firstName = employee?.first_name || '';
+      const lastName = employee?.last_name || '';
+
+      return {
+        participant_id: participant.id,
+        employee_id: employee?.id ?? null,
+        email: employee?.email || '',
+        name: `${firstName} ${lastName}`.trim(),
+        first_name: firstName,
+        last_name: lastName,
+        employer: employee?.company_name || defaultCompanyName,
+        function: employee?.department || '',
+        participation_status: participant.status,
+        response_status: responded ? 'responded' : 'not_responded',
+        responded,
+        response_count: responseCount,
+        invitation_sent_at: participant.invitation_sent_at,
+        reminder_sent_at: participant.reminder_sent_at,
+        completed_at: participant.completed_at,
+      };
+    });
+  }
+
   private async triggerAnalysis(
     campaignId: number,
     campaignName: string | null,
@@ -288,6 +393,10 @@ export class CampaignService {
       campaignId,
       companyName,
     );
+    const participants = await this.getCampaignParticipantStatuses(
+      campaignId,
+      companyName,
+    );
 
     if (employeesData.length === 0) {
       throw new BadRequestException(
@@ -295,10 +404,29 @@ export class CampaignService {
       );
     }
 
+    const respondedParticipants = participants.filter(
+      (participant) => participant.responded,
+    ).length;
+    const pendingParticipants = participants.length - respondedParticipants;
+    const participationSummary = {
+      total_participants: participants.length,
+      responded_participants: respondedParticipants,
+      not_responded_participants: pendingParticipants,
+      pending_participants: pendingParticipants,
+      participation_rate:
+        participants.length === 0
+          ? 0
+          : Number(
+              ((respondedParticipants / participants.length) * 100).toFixed(2),
+            ),
+    };
+
     // Construire le payload au format attendu par n8n (identique au frontend)
     const payload = {
       body: {
         body: employeesData,
+        participants,
+        participation_summary: participationSummary,
         campaign_id: campaignId,
         company_id: companyId,
         client_email: userEmail,
@@ -306,6 +434,8 @@ export class CampaignService {
       campaign_name: campaignName,
       company_id: companyId,
       company_name: companyName,
+      participants,
+      participation_summary: participationSummary,
       user_email: userEmail,
     };
 

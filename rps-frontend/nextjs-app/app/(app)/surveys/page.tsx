@@ -140,11 +140,11 @@ export default async function SurveysPage({
       <PageErrorState
         eyebrow="Gestion des sondages"
         title="Sondages"
-        description="Cree, modifie ou consulte les sondages disponibles."
+        description="Crée, modifie ou consulte les sondages disponibles."
         message={
           error instanceof Error
             ? error.message
-            : "Les donnees sondage n'ont pas pu etre chargees."
+            : "Les données sondage n'ont pas pu être chargées."
         }
       />
     );

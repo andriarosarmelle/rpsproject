@@ -5,6 +5,10 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { Company } from '../company/company.entity';
+import {
+  CampaignParticipant,
+  CampaignParticipantStatus,
+} from '../campaign-participant/campaign-participant.entity';
 import { SurveyResponse } from '../response/response.entity';
 import { Campaign } from './campaign.entity';
 import { CampaignService } from './campaign.service';
@@ -12,6 +16,7 @@ import { CampaignService } from './campaign.service';
 describe('CampaignService', () => {
   let service: CampaignService;
   let responseRepository: { find: jest.Mock };
+  let campaignParticipantRepository: { find: jest.Mock };
   const originalN8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
   const originalFetch = global.fetch;
 
@@ -19,6 +24,9 @@ describe('CampaignService', () => {
     process.env.N8N_WEBHOOK_URL = 'http://n8n.test/webhook/rps';
     responseRepository = {
       find: jest.fn(),
+    };
+    campaignParticipantRepository = {
+      find: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -43,6 +51,10 @@ describe('CampaignService', () => {
         {
           provide: getRepositoryToken(SurveyResponse),
           useValue: responseRepository,
+        },
+        {
+          provide: getRepositoryToken(CampaignParticipant),
+          useValue: campaignParticipantRepository,
         },
       ],
     }).compile();
@@ -114,6 +126,101 @@ describe('CampaignService', () => {
     ]);
   });
 
+  it('formats all participant response statuses for n8n', async () => {
+    const completedAt = new Date('2026-05-12T10:00:00.000Z');
+    const invitedAt = new Date('2026-05-10T08:00:00.000Z');
+    campaignParticipantRepository.find.mockResolvedValue([
+      {
+        id: 41,
+        status: CampaignParticipantStatus.COMPLETED,
+        invitation_sent_at: invitedAt,
+        reminder_sent_at: null,
+        completed_at: completedAt,
+        employee: {
+          id: 7,
+          company_name: null,
+          email: 'ada@example.com',
+          first_name: 'Ada',
+          last_name: 'Lovelace',
+          department: 'R&D',
+        },
+      },
+      {
+        id: 42,
+        status: CampaignParticipantStatus.PENDING,
+        invitation_sent_at: invitedAt,
+        reminder_sent_at: null,
+        completed_at: null,
+        employee: {
+          id: 8,
+          company_name: 'Filiale',
+          email: 'grace@example.com',
+          first_name: 'Grace',
+          last_name: 'Hopper',
+          department: 'IT',
+        },
+      },
+    ]);
+    responseRepository.find.mockResolvedValue([
+      {
+        employee: { id: 7 },
+      },
+      {
+        employee: { id: 7 },
+      },
+    ]);
+
+    const rows = await (service as any).getCampaignParticipantStatuses(
+      12,
+      'Entreprise Test',
+    );
+
+    expect(campaignParticipantRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          campaign: { id: 12 },
+          employee: { deleted_at: expect.any(Object) },
+        },
+      }),
+    );
+    expect(rows).toEqual([
+      {
+        participant_id: 41,
+        employee_id: 7,
+        email: 'ada@example.com',
+        name: 'Ada Lovelace',
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        employer: 'Entreprise Test',
+        function: 'R&D',
+        participation_status: 'completed',
+        response_status: 'responded',
+        responded: true,
+        response_count: 2,
+        invitation_sent_at: invitedAt,
+        reminder_sent_at: null,
+        completed_at: completedAt,
+      },
+      {
+        participant_id: 42,
+        employee_id: 8,
+        email: 'grace@example.com',
+        name: 'Grace Hopper',
+        first_name: 'Grace',
+        last_name: 'Hopper',
+        employer: 'Filiale',
+        function: 'IT',
+        participation_status: 'pending',
+        response_status: 'not_responded',
+        responded: false,
+        response_count: 0,
+        invitation_sent_at: invitedAt,
+        reminder_sent_at: null,
+        completed_at: null,
+      },
+    ]);
+  });
+
   it('rejects analysis before calling n8n when a campaign has no usable responses', async () => {
     jest
       .spyOn(service as any, 'getCampaignResponsesFormatted')
@@ -147,6 +254,44 @@ describe('CampaignService', () => {
           Q1: '4',
         },
       ]);
+    jest
+      .spyOn(service as any, 'getCampaignParticipantStatuses')
+      .mockResolvedValue([
+        {
+          participant_id: 41,
+          employee_id: 7,
+          email: 'employee@example.com',
+          name: 'Ada Lovelace',
+          first_name: 'Ada',
+          last_name: 'Lovelace',
+          employer: 'Entreprise Test',
+          function: 'R&D',
+          participation_status: 'completed',
+          response_status: 'responded',
+          responded: true,
+          response_count: 1,
+          invitation_sent_at: null,
+          reminder_sent_at: null,
+          completed_at: null,
+        },
+        {
+          participant_id: 42,
+          employee_id: 8,
+          email: 'pending@example.com',
+          name: 'Grace Hopper',
+          first_name: 'Grace',
+          last_name: 'Hopper',
+          employer: 'Entreprise Test',
+          function: 'IT',
+          participation_status: 'pending',
+          response_status: 'not_responded',
+          responded: false,
+          response_count: 0,
+          invitation_sent_at: null,
+          reminder_sent_at: null,
+          completed_at: null,
+        },
+      ]);
     const fetchMock = jest.fn().mockResolvedValue({ ok: true });
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -172,6 +317,50 @@ describe('CampaignService', () => {
     );
 
     const [, request] = fetchMock.mock.calls[0];
+    const participants = [
+      {
+        participant_id: 41,
+        employee_id: 7,
+        email: 'employee@example.com',
+        name: 'Ada Lovelace',
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        employer: 'Entreprise Test',
+        function: 'R&D',
+        participation_status: 'completed',
+        response_status: 'responded',
+        responded: true,
+        response_count: 1,
+        invitation_sent_at: null,
+        reminder_sent_at: null,
+        completed_at: null,
+      },
+      {
+        participant_id: 42,
+        employee_id: 8,
+        email: 'pending@example.com',
+        name: 'Grace Hopper',
+        first_name: 'Grace',
+        last_name: 'Hopper',
+        employer: 'Entreprise Test',
+        function: 'IT',
+        participation_status: 'pending',
+        response_status: 'not_responded',
+        responded: false,
+        response_count: 0,
+        invitation_sent_at: null,
+        reminder_sent_at: null,
+        completed_at: null,
+      },
+    ];
+    const participationSummary = {
+      total_participants: 2,
+      responded_participants: 1,
+      not_responded_participants: 1,
+      pending_participants: 1,
+      participation_rate: 50,
+    };
+
     expect(JSON.parse(request.body)).toEqual({
       body: {
         body: [
@@ -184,6 +373,8 @@ describe('CampaignService', () => {
             Q1: '4',
           },
         ],
+        participants,
+        participation_summary: participationSummary,
         campaign_id: 1,
         company_id: 10,
         client_email: 'client@example.com',
@@ -191,6 +382,8 @@ describe('CampaignService', () => {
       campaign_name: 'Campagne active',
       company_id: 10,
       company_name: 'Entreprise Test',
+      participants,
+      participation_summary: participationSummary,
       user_email: 'client@example.com',
     });
   });

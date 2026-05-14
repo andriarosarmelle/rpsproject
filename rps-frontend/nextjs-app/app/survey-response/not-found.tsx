@@ -12,13 +12,13 @@ export default function SurveyResponseNotFound() {
           Ce questionnaire est introuvable
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Le lien utilise est invalide, expire ou deja supprime.
+          Le lien utilisé est invalide, expiré ou déjà supprimé.
         </p>
         <Link
           href="/survey-response"
           className="mt-6 inline-block rounded-[12px] bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-200 transition hover:-translate-y-0.5"
         >
-          Revenir a l&apos;acces salarie
+          Revenir à l&apos;accès salarié
         </Link>
       </Card>
     </div>

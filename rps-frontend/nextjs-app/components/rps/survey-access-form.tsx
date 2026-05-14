@@ -25,13 +25,13 @@ export function SurveyAccessForm() {
   return (
     <Card className="mx-auto max-w-2xl p-6 sm:p-8">
       <p className="text-sm font-semibold uppercase tracking-[0.22em] text-amber-700">
-        Acces salarie
+        Accès salarié
       </p>
       <h2 className="mt-3 font-[family-name:var(--font-manrope)] text-3xl font-extrabold tracking-tight">
         Ouvrir le questionnaire avec un lien unique
       </h2>
       <p className="mt-3 text-sm leading-6 text-slate-600">
-        Colle ici le token recu dans l&apos;invitation pour ouvrir ton questionnaire personnel.
+        Colle ici le token reçu dans l&apos;invitation pour ouvrir ton questionnaire personnel.
       </p>
 
       <div className="mt-6 space-y-4">
@@ -47,10 +47,10 @@ export function SurveyAccessForm() {
             disabled={!token.trim() || isPending}
             onClick={() => openSurvey(token)}
           >
-            {isPending ? "Ouverture..." : "Acceder au questionnaire"}
+            {isPending ? "Ouverture..." : "Accéder au questionnaire"}
           </PrimaryButton>
           <SecondaryButton className="sm:w-auto" onClick={() => openSurvey(demoSurveyAccessToken)}>
-            Ouvrir la demo salarie
+            Ouvrir la démo salarié
           </SecondaryButton>
         </div>
       </div>

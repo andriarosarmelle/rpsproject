@@ -1,7 +1,5 @@
 "use client";
 
-"use client";
-
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -74,14 +72,14 @@ export default function LoginPage() {
               href="/survey-response"
               className="rounded-[12px] border border-[#d8ccba] bg-[#fffaf1] px-5 py-3 text-sm font-semibold text-slate-700 no-underline transition hover:bg-[#f8eedf]"
             >
-              Voir le parcours salarie
+              Voir le parcours salarié
             </Link>
           </div>
         </section>
 
         <Card className="mx-auto w-full max-w-md rounded-[22px] border border-[#dfd1b9] bg-[rgba(255,252,246,0.95)] p-6 shadow-[0_24px_60px_rgba(40,33,24,0.16)] sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8a651f]">
-            Acces administrateur
+            Accès administrateur
           </p>
           <h2 className={`mt-2 ${headingFontClass} text-2xl font-extrabold tracking-tight text-slate-900`}>
             Connexion administrateur

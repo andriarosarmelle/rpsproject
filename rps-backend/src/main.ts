@@ -20,6 +20,8 @@ async function bootstrap() {
     bodyParser: true,
     logger: new WinstonLoggerService(),
   });
+  const expressInstance = app.getHttpAdapter().getInstance() as express.Express;
+  expressInstance.set('trust proxy', 1);
   const apiPrefix = 'api';
   const swaggerPath = process.env.SWAGGER_PATH ?? 'api-docs';
 
@@ -67,6 +69,8 @@ async function bootstrap() {
   });
 
   // Apply rate limiting before other middleware
+  app.use('/auth/login', authLimiter);
+  app.use('/auth/register', authLimiter);
   app.use('/api/auth/login', authLimiter);
   app.use('/api/auth/register', authLimiter);
   app.use(generalLimiter);

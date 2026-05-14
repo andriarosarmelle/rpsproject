@@ -64,7 +64,7 @@ export default function SignupPage() {
               href="/login"
               className="rounded-[12px] border border-[#d8ccba] bg-[#fffaf1] px-5 py-3 text-sm font-semibold text-slate-700 no-underline transition hover:bg-[#f8eedf]"
             >
-              J'ai deja un compte
+              J'ai déjà un compte
             </Link>
           </div>
         </section>

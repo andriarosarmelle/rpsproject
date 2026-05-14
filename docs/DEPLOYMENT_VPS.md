@@ -38,7 +38,7 @@
 3. Creer les variables d'environnement reelles a partir de `scripts/vps/.env.server.example`.
 4. Initialiser PostgreSQL.
 5. Lancer GitHub Actions pour deployer l'application.
-6. Verifier `api/health`, l'interface web et `n8n/`.
+6. Verifier `backend-api/health`, l'interface web et `n8n/`.
 
 ## Commandes de depart
 

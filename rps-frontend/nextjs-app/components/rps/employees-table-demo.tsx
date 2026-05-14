@@ -193,11 +193,11 @@ export function EmployeesTableDemo({
         const message = formatTrpcError(err);
 
         if (/404|not found|introuvable/i.test(message)) {
-          setSurveyDetailsError("Le sondage selectionne est introuvable ou a ete supprime.");
+          setSurveyDetailsError("Le sondage sélectionné est introuvable ou a été supprimé.");
         } else if (/backend unavailable|fetch failed|network|ECONNREFUSED|ENOTFOUND/i.test(message)) {
-          setSurveyDetailsError("Le backend est indisponible pour charger le detail du sondage.");
+          setSurveyDetailsError("Le backend est indisponible pour charger le détail du sondage.");
         } else if (/not configured|PRECONDITION_FAILED/i.test(message)) {
-          setSurveyDetailsError("Le backend n'est pas configure pour charger le detail du sondage.");
+          setSurveyDetailsError("Le backend n'est pas configuré pour charger le détail du sondage.");
         } else {
           setSurveyDetailsError(message || "Une erreur est survenue lors du chargement du sondage.");
         }

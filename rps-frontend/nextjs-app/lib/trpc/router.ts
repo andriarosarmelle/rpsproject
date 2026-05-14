@@ -273,6 +273,22 @@ const campaignParticipantsRouter = t.router({
 				force: input.force,
 			});
 		}),
+
+	sendInvitations: t.procedure
+		.input(
+			z.object({
+				campaignId: z.number().int().positive(),
+				appUrl: z.string().url(),
+				force: z.boolean().optional(),
+			}),
+		)
+		.mutation(async ({ input }) => {
+			ensureBackendConfigured();
+			return postBackend(`/campaign-participants/campaign/${input.campaignId}/send-invitations`, {
+				app_url: input.appUrl,
+				force: input.force,
+			});
+		}),
 });
 
 const surveyResponsesRouter = t.router({

@@ -7,17 +7,17 @@ export default function SurveyResponsePage() {
       <div className="mx-auto mb-6 flex max-w-3xl justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
-            Acces employe
+            Accès employé
           </p>
           <h1 className="mt-2 font-[family-name:var(--font-manrope)] text-3xl font-extrabold">
-            Acces au sondage
+            Accès au sondage
           </h1>
         </div>
         <Link
           href="/login"
           className="rounded-[12px] border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
         >
-          Retour a la connexion
+          Retour à la connexion
         </Link>
       </div>
       <SurveyAccessForm />

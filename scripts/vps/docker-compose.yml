@@ -45,6 +45,8 @@ services:
       N8N_BASE_URL: ${N8N_BASE_URL:-http://n8n:5678/n8n}
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/n8n}
       N8N_WEBHOOK_PATH: ${N8N_WEBHOOK_PATH:-/webhook/sondage-rps-solutions-tech}
+      N8N_INVITATION_WEBHOOK_URL: ${N8N_INVITATION_WEBHOOK_URL:-}
+      N8N_INVITATION_WEBHOOK_PATH: ${N8N_INVITATION_WEBHOOK_PATH:-}
       N8N_HEALTH_REQUIRED: ${N8N_HEALTH_REQUIRED:-false}
     depends_on:
       postgres:
@@ -59,7 +61,7 @@ services:
       context: ../../rps-frontend/nextjs-app
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/backend-api}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost}
         NEXT_PUBLIC_STRAPI_URL: ${NEXT_PUBLIC_STRAPI_URL:-}
         NEXT_PUBLIC_BACKEND_MODE: ${NEXT_PUBLIC_BACKEND_MODE:-real}
@@ -67,11 +69,11 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/backend-api}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost}
       NEXT_PUBLIC_STRAPI_URL: ${NEXT_PUBLIC_STRAPI_URL:-}
       NEXT_PUBLIC_BACKEND_MODE: ${NEXT_PUBLIC_BACKEND_MODE:-real}
-      API_URL: http://backend:3000/api
+      API_URL: http://backend:3000
       APP_URL: ${APP_URL:-http://localhost}
       STRAPI_API_TOKEN: ${STRAPI_API_TOKEN:-}
       ADMIN_ALLOWED_EMAILS: ${ADMIN_ALLOWED_EMAILS:-}

@@ -43,9 +43,9 @@ export function DashboardDemo({
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {[
           ["Taux de participation", `${metrics.participationRate}%`, "+8% ce mois"],
-          ["Stress moyen", `${metrics.averageStress} / 5`, "Niveau modere"],
-          ["Employes repondants", `${metrics.responded} / ${metrics.totalEmployees}`, "Suivi en temps reel"],
-          ["Alertes detectees", `${metrics.alertsDetected}`, "2 critiques"],
+          ["Stress moyen", `${metrics.averageStress} / 5`, "Niveau modéré"],
+          ["Employés répondants", `${metrics.responded} / ${metrics.totalEmployees}`, "Suivi en temps réel"],
+          ["Alertes détectées", `${metrics.alertsDetected}`, "2 critiques"],
         ].map(([label, value, detail]) => (
           <Card key={label} className="p-5">
             <div className="h-1.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-300" />

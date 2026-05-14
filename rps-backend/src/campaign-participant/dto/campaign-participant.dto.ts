@@ -10,6 +10,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
   Min,
   MinLength,
@@ -181,6 +182,25 @@ export class SendCampaignRemindersDto {
   minimum_days_since_invitation?: number;
 
   @ApiProperty({ description: "Forcer l'envoi des rappels", required: false })
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
+}
+
+export class SendCampaignInvitationsDto {
+  @ApiProperty({
+    description: "URL publique de l'application pour construire les liens",
+    example: 'http://localhost:3001',
+    required: false,
+  })
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  app_url?: string;
+
+  @ApiProperty({
+    description: 'Forcer un nouvel envoi meme si une invitation existe deja',
+    required: false,
+  })
   @IsOptional()
   @IsBoolean()
   force?: boolean;

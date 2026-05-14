@@ -72,7 +72,7 @@ export function CampaignReportsTable({
 
     if (isDemoSession()) {
       setMessage({
-        text: "Mode demo : analyse simulee. Le rapport general par mail sera disponible une fois n8n active.",
+        text: "Mode démo : analyse simulée. Le rapport général par mail sera disponible une fois n8n activé.",
         type: "success",
       });
       setAnalyzingId(null);
@@ -206,7 +206,7 @@ export function CampaignReportsTable({
                     <td className="px-6 py-4">
                       {hasReport ? (
                         <span className="text-xs text-emerald-600 font-medium">
-                          ✅ Complete
+                          ✅ Complété
                         </span>
                       ) : (
                         <PrimaryButton
