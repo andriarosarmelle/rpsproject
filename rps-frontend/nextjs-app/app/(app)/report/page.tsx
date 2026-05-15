@@ -21,10 +21,10 @@ export default async function ReportPage({
         <SectionHeader
           eyebrow="Rapports"
           title="Rapports Resultats"
-          description="Connecte le backend pour gerer les analyses RPS."
+          description="Configure le backend pour lancer l'analyse IA de tes campagnes et recevoir tes rapports par email."
         />
         <Card className="p-8 text-center">
-          <p className="text-slate-500">Backend non configure.</p>
+          <p className="text-slate-500">Backend non configuré.</p>
         </Card>
       </section>
     );
@@ -42,7 +42,7 @@ export default async function ReportPage({
         <SectionHeader
           eyebrow="Rapports"
           title="Rapports Resultats"
-          description="Lance l'analyse IA d'une campagne et retrouve tes rapports dans tes emails."
+          description="Analyse des campagnes et rapports par email."
         />
 
         <CampaignReportsTable
@@ -59,9 +59,9 @@ export default async function ReportPage({
       <PageErrorState
         eyebrow="Rapports"
         title="Rapports Resultats"
-        description="Lance l'analyse IA d'une campagne et retrouve tes rapports dans tes emails."
+        description="Analyse des campagnes et rapports par email."
         message={
-          error instanceof Error ? error.message : "Les rapports n'ont pas pu etre charges."
+          error instanceof Error ? error.message : "Les rapports n'ont pas pu être chargés."
         }
       />
     );

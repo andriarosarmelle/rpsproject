@@ -72,7 +72,7 @@ export function CampaignReportsTable({
 
     if (isDemoSession()) {
       setMessage({
-        text: "Mode demo : analyse simulee. Le rapport general par mail sera disponible une fois n8n active.",
+        text: "Mode demo : analyse simulée. Le rapport général par mail sera disponible une fois n8n activé.",
         type: "success",
       });
       setAnalyzingId(null);
@@ -95,7 +95,7 @@ export function CampaignReportsTable({
       <Card className="p-8 text-center">
         <p className="text-lg text-slate-500">Aucune campagne pour le moment.</p>
         <p className="mt-2 text-sm text-slate-400">
-          Cree une campagne depuis la page Sondages pour commencer.
+          Crée une campagne depuis la page "Sondages" pour commencer.
         </p>
       </Card>
     );
@@ -206,7 +206,7 @@ export function CampaignReportsTable({
                     <td className="px-6 py-4">
                       {hasReport ? (
                         <span className="text-xs text-emerald-600 font-medium">
-                          ✅ Complete
+                          ✅ Complété
                         </span>
                       ) : (
                         <PrimaryButton
@@ -230,7 +230,7 @@ export function CampaignReportsTable({
       <Card className="border-l-4 border-amber-400 bg-amber-50 px-5 py-4">
         <p className="text-sm text-amber-900">
           💡 <strong>Info :</strong> L&apos;analyse prend 1 à 2 minutes. Le rapport complet sera
-          envoye par email avec un lien vers Google Drive.
+          envoyé par email avec un lien vers Google Drive.
         </p>
       </Card>
     </div>

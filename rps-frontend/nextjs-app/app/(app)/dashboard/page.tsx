@@ -22,11 +22,11 @@ export default async function DashboardPage({
       <PageErrorState
         eyebrow="Tableau de bord"
         title="Entreprises et sondages"
-        description="Consulte les sondages par entreprise et accede aux resultats."
+        description="Consulte les sondages par entreprise et accède aux résultats."
         message={
           error instanceof Error
             ? error.message
-            : "Le tableau de bord n'a pas pu etre charge."
+            : "Le tableau de bord n'a pas pu être chargé."
         }
       />
     );

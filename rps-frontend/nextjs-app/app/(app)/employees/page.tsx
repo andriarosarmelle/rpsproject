@@ -68,7 +68,7 @@ export default async function EmployeesPage({
         message={
           error instanceof Error
             ? error.message
-            : "Les donnees participants n'ont pas pu etre chargees."
+            : "Les données participants n'ont pas pu être chargées."
         }
       />
     );

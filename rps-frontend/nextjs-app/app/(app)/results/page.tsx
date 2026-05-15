@@ -46,9 +46,9 @@ export default async function ResultsPage({
     return (
     <section className="space-y-6">
       <SectionHeader
-        eyebrow="Resultats"
-        title="Resultats par sondage"
-        description="Selectionne un sondage pour consulter les indicateurs et les analyses detaillees."
+        eyebrow="Résultats"
+        title="Résultats par sondage"
+        description="Selectionne un sondage pour consulter les indicateurs et les analyses detaillées."
       />
 
       <Card className="overflow-hidden">
@@ -58,7 +58,7 @@ export default async function ResultsPage({
               Tableau des sondages
             </h3>
             <p className="mt-1 text-sm text-slate-500">
-              Retrouve rapidement un sondage pour acceder aux resultats.
+              Retrouve rapidement un sondage pour accéder aux résultats.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -67,9 +67,9 @@ export default async function ResultsPage({
               className="rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
             />
             <select className="rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
-              <option value="active">active</option>
+              <option value="active">activé</option>
               <option value="draft">brouillon</option>
-              <option value="archived">archive</option>
+              <option value="archived">archivé</option>
             </select>
           </div>
         </div>
@@ -80,10 +80,10 @@ export default async function ResultsPage({
               <tr>
                 <th className="px-6 py-4">Entreprise</th>
                 <th className="px-6 py-4">Statut</th>
-                <th className="px-6 py-4">Taux de completion</th>
-                <th className="px-6 py-4">Date de debut</th>
+                <th className="px-6 py-4">Taux de complétion</th>
+                <th className="px-6 py-4">Date de début</th>
                 <th className="px-6 py-4">Date de fin</th>
-                <th className="px-6 py-4">Resultats</th>
+                <th className="px-6 py-4">Résultats</th>
               </tr>
             </thead>
             <tbody>
@@ -100,7 +100,7 @@ export default async function ResultsPage({
                     <Pill tone={completionRate >= 70 ? "success" : "warning"}>
                       {completionRate}%
                     </Pill>
-                    <span className="text-xs text-slate-500">completion globale</span>
+                    <span className="text-xs text-slate-500">de complétion globale</span>
                   </div>
                 </td>
                 <td className="px-6 py-4 text-slate-600">
@@ -115,7 +115,7 @@ export default async function ResultsPage({
                     className="inline-flex items-center justify-center rounded-[12px] bg-[#181818] px-4 py-2 text-xs font-semibold shadow-[0_12px_24px_rgba(24,24,24,0.12)] transition hover:-translate-y-0.5 hover:bg-[#242424]"
                     style={{ color: '#ffffff' }}
                   >
-                    Voir les resultats
+                    Voir les résultats
                   </Link>
                 </td>
               </tr>
@@ -145,17 +145,17 @@ export default async function ResultsPage({
               {
                 label: "Stress moyen",
                 value: `${metrics.averageStress} / 5`,
-                tone: "Indicateur consolide sur les reponses recues.",
+                tone: "Indicateur consolide sur les réponses reçues.",
               },
               {
                 label: "Departements analyses",
                 value: `${bars.length}`,
-                tone: "Comparaison inter-equipes en temps reel.",
+                tone: "Comparaison inter-equipes en temps réel.",
               },
               {
                 label: "Alertes prioritaires",
                 value: `${analysis.length}`,
-                tone: "Points de vigilance a partager aux managers.",
+                tone: "Points de vigilance à partager aux managers.",
               },
             ].map((item) => (
               <Card key={item.label} className="overflow-hidden p-5">
@@ -173,12 +173,12 @@ export default async function ResultsPage({
             <Card className="p-6">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-sm text-slate-500">Lecture departement par departement</p>
+                  <p className="text-sm text-slate-500">Lecture département par département</p>
                   <h3 className="mt-1 font-[family-name:var(--font-manrope)] text-xl font-bold">
-                    Intensite du stress percu
+                    Intensité du stress perçu
                   </h3>
                 </div>
-                <Pill tone="warning">Priorites de restitution</Pill>
+                <Pill tone="warning">Priorités de restitution</Pill>
               </div>
 
               <div className="mt-8 space-y-5">
@@ -209,7 +209,7 @@ export default async function ResultsPage({
 
             <div className="space-y-5">
               <Card className="p-6">
-                <p className="text-sm text-slate-500">Repartition des retours</p>
+                <p className="text-sm text-slate-500">Répartition des retours</p>
                 <h3 className="mt-1 font-[family-name:var(--font-manrope)] text-xl font-bold">
                   Lecture executive
                 </h3>
@@ -235,7 +235,7 @@ export default async function ResultsPage({
                       Recommandation de lecture
                     </p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Commencer par les equipes les plus exposees, puis relier les ecarts a la participation et au contexte managerial.
+                      Commencer par les équipes les plus exposées, puis relier les écarts à la participation et au contexte managerial.
                     </p>
                   </div>
                 </div>
@@ -266,13 +266,13 @@ export default async function ResultsPage({
   } catch (error) {
     return (
       <PageErrorState
-        eyebrow="Resultats"
-        title="Resultats par sondage"
-        description="Consulte les indicateurs et les analyses detaillees du sondage selectionne."
+        eyebrow="Résultats"
+        title="Résultats par sondage"
+        description="Consulte les indicateurs et les analyses detaillées du sondage selectionné."
         message={
           error instanceof Error
             ? error.message
-            : "Les resultats n'ont pas pu etre charges."
+            : "Les résultats n'ont pas pu être chargés."
         }
       />
     );
