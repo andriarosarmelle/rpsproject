@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     if (payload.action === "import") {
       if (!payload.campaignId || !payload.companyId || !payload.csv.trim()) {
         return NextResponse.json(
-          { message: "campaignId, companyId et csv sont requis." },
+          { message: "L'identifiant de la campagne, de l'entreprise et la liste des employés sont requis." },
           { status: 400 },
         );
       }
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
     if (payload.action === "remind") {
       if (!payload.campaignId) {
-        return NextResponse.json({ message: "campaignId est requis." }, { status: 400 });
+        return NextResponse.json({ message: "L'identifiant de la campagne est requise." }, { status: 400 });
       }
 
       const result = await postBackend(
@@ -61,10 +61,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, result });
     }
 
-    return NextResponse.json({ message: "Action non supportee." }, { status: 400 });
+    return NextResponse.json({ message: "Action non supportée." }, { status: 400 });
   } catch {
     return NextResponse.json(
-      { message: "L'action admin vers le backend a echoue." },
+      { message: "L'action a échoué." },
       { status: 502 },
     );
   }

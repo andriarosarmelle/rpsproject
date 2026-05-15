@@ -13,6 +13,17 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/admin/") ||
+    pathname.startsWith("/trpc") ||
+    pathname.startsWith("/webhook/") ||
+    pathname === "/survey-responses" ||
+    pathname === "/report/export-docx"
+  ) {
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith("/api/")) {
     return NextResponse.next();
   }

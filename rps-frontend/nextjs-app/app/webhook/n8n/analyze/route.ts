@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
 
     if (!campaignId || !results || !Array.isArray(results)) {
       return NextResponse.json(
-        { error: "campaignId et results (tableau) sont requis" },
+        { error: "L'identifiant de la campagne et la liste des résultats sont nécessaires." },
         { status: 400 },
       );
     }
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
         body: results.map((employee: Record<string, unknown>) => ({
           Employeur: employee.employer || employee.employeur || "Entreprise",
           Email: employee.email || "",
-          "Nom et Prenom": `${employee.firstName || employee.first_name || ""} ${
+          "Nom et Prénom(s)": `${employee.firstName || employee.first_name || ""} ${
             employee.lastName || employee.last_name || ""
           }`.trim(),
           Fonction: employee.department || employee.title || employee.fonction || "",
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Analyse envoyee a n8n avec succes",
+      message: "Analyse envoyée à n8n avec succès",
       data: result,
     });
   } catch (error) {
@@ -65,14 +65,14 @@ export async function POST(request: NextRequest) {
     if (process.env.NODE_ENV === "development") {
       return NextResponse.json({
         success: true,
-        message: "Analyse simulee (n8n non configure)",
-        note: "Configurez N8N_WEBHOOK_URL dans .env.local pour activer l'analyse via n8n",
+        message: "Analyse simulée (n8n non configuré)",
+        note: "Configurez l'environnement pour activer l'analyse.",
       });
     }
 
     return NextResponse.json(
       {
-        error: "Echec de l'envoi a n8n",
+        error: "Echec de l'envoi à n8n",
         details: error instanceof Error ? error.message : "Erreur inconnue",
       },
       { status: 500 },

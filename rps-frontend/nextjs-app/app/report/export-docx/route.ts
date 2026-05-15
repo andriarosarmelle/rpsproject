@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     });
   } catch {
     return NextResponse.json(
-      { message: "La generation du rapport Word a echoue." },
+      { message: "La génération du rapport Word a échoué." },
       { status: 500 },
     );
   }

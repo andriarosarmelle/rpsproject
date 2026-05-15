@@ -168,13 +168,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, result });
       }
       default:
-        return NextResponse.json({ message: "Action non supportee." }, { status: 400 });
+        return NextResponse.json({ message: "Action non supportée." }, { status: 400 });
     }
   } catch (error) {
     const message =
       error instanceof Error && error.message
         ? error.message
-        : "La mutation sondage/question a echoue.";
+        : "La mutation sondage/question a échoué.";
 
     return NextResponse.json(
       { message },

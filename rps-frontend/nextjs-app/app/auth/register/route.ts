@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Inscription indisponible.",
+        error: error instanceof Error ? error.message : "Inscription indisponible pour ce compte.",
       },
       { status: 400 },
     );

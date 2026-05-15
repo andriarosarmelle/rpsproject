@@ -28,7 +28,7 @@ export async function POST(request: Request) {
           user: {
             id: 0,
             email: credentials.email.trim().toLowerCase(),
-            name: "Admin demo",
+            name: "Démo administrateur",
           },
           token: DEMO_AUTH_TOKEN,
         }
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Connexion administrateur indisponible.",
+          error instanceof Error ? error.message : "Identifiants incorrects.",
       },
       { status: 401 },
     );

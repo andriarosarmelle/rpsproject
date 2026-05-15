@@ -38,7 +38,7 @@ export async function GET() {
   } catch (error) {
     const response = NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Session invalide.",
+        error: error instanceof Error ? error.message : "Session expirée ou invalide.",
       },
       { status: 401 },
     );

@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
   if ((!payload.employeeId && !payload.participantToken) || !payload.answers?.length) {
     return NextResponse.json(
-      { message: "participantToken ou employeeId, et answers sont requis." },
+      { message: "Les identifiants de l'employé ou du participant et les réponses sont requis." },
       { status: 400 },
     );
   }
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, mode: "backend" });
   } catch {
     return NextResponse.json(
-      { message: "La soumission vers le backend NestJS a echoue." },
+      { message: "La soumission a échoué." },
       { status: 502 },
     );
   }

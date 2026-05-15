@@ -252,14 +252,14 @@ export function EmployeesTableDemo({
       router.refresh();
     } catch {
       try {
-        const response = await appFetch("/api/webhook/n8n/remind", {
+        const response = await appFetch("/admin/campaign-participants", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            action: "remind",
             campaignId,
             companyId,
-            remindPending: true,
-            message: "Rappel : Votre participation au sondage RPS est attendue.",
+            force: true,
           }),
         });
 

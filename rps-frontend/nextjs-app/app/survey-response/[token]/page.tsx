@@ -29,13 +29,13 @@ export default async function SurveyResponseTokenPage({
         <div className="mx-auto mb-6 flex max-w-3xl flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
-              Acces employe
+              Accès employé
             </p>
             <h1 className="mt-2 font-[family-name:var(--font-manrope)] text-3xl font-extrabold">
-              {surveyData.campaignName || "Acces au sondage"}
+              {surveyData.campaignName || "Accès au sondage"}
             </h1>
             <p className="mt-2 text-sm text-slate-600">
-              Questionnaire attribue a {surveyData.employeeName || "ce salarie"}.
+              Questionnaire attribué à {surveyData.employeeName || "ce salarié"}.
             </p>
           </div>
           <Link
@@ -49,7 +49,7 @@ export default async function SurveyResponseTokenPage({
         {surveyData.completedAt ? (
           <Card className="mx-auto mb-6 max-w-3xl border border-emerald-200 bg-emerald-50 p-5">
             <p className="text-sm font-semibold text-emerald-800">
-              Ce sondage a deja ete complete.
+              Ce sondage a déjà été completé.
             </p>
           </Card>
         ) : null}
@@ -71,13 +71,13 @@ export default async function SurveyResponseTokenPage({
     return (
       <div className="min-h-screen px-5 py-8 sm:px-8 lg:px-10">
         <PageErrorState
-          eyebrow="Acces employe"
-          title="Acces au sondage"
-          description="Ouvre le lien individuel recu par email pour repondre au questionnaire."
+          eyebrow="Accès employé"
+          title="Accès au sondage"
+          description="Ouvre le lien individuel reçu par email pour répondre au questionnaire."
           message={
             error instanceof Error
               ? error.message
-              : "Le questionnaire n'a pas pu etre charge."
+              : "Le questionnaire n'a pas pu être chargé."
           }
         />
       </div>

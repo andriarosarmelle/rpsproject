@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 const handler = (request: Request) =>
   fetchRequestHandler({
-    endpoint: "/api/trpc",
+    endpoint: "/trpc",
     req: request,
     router: appRouter,
     createContext: () => ({}),

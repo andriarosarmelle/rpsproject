@@ -46,7 +46,7 @@ async function readJsonOrThrow<T>(response: Response): Promise<T> {
 }
 
 export async function login(credentials: LoginCredentials): Promise<AuthResponse> {
-  const response = await appFetch("/api/auth/login", {
+  const response = await appFetch("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -59,7 +59,7 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
 }
 
 export async function register(credentials: RegisterCredentials): Promise<AuthResponse> {
-  const response = await appFetch("/api/auth/register", {
+  const response = await appFetch("/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -81,7 +81,7 @@ export function createDemoAuthResponse(): AuthResponse {
 }
 
 export async function logout() {
-  await appFetch("/api/auth/logout", {
+  await appFetch("/auth/logout", {
     method: "POST",
   });
 }
@@ -91,7 +91,7 @@ export function saveAuth(_response: AuthResponse) {
 }
 
 export async function getSessionUser(): Promise<User | null> {
-  const response = await appFetch("/api/auth/session", {
+  const response = await appFetch("/auth/session", {
     method: "GET",
     cache: "no-store",
   });
