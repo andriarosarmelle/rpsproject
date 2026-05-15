@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import {
   deleteBackend,
   getBackendCollection,
@@ -8,14 +9,13 @@ import {
   patchBackend,
   postBackend,
 } from "./client";
-
-const DEMO_AUTH_TOKEN = "auth-disabled";
+import { type User } from "./auth";
 
 async function getServerAuthToken() {
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value?.trim();
 
-  if (!token || token === DEMO_AUTH_TOKEN) {
+  if (!token) {
     return undefined;
   }
 
@@ -40,4 +40,28 @@ export async function patchServerBackend<TResponse, TBody>(path: string, body: T
 
 export async function deleteServerBackend<TResponse>(path: string) {
   return deleteBackend<TResponse>(path, await getServerAuthToken());
+}
+
+export async function getServerSessionUser(): Promise<User | null> {
+  const token = await getServerAuthToken();
+
+  if (!token) {
+    return null;
+  }
+
+  try {
+    return await getBackendItem<User>("/auth/me", token);
+  } catch {
+    return null;
+  }
+}
+
+export async function requireServerSessionUser(): Promise<User> {
+  const user = await getServerSessionUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  return user;
 }

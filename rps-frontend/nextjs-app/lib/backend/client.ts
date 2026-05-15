@@ -1,10 +1,5 @@
 import { ApiResponseError, apiFetch, getApiBaseUrl } from "@/lib/api";
 
-const BACKEND_MODE_REAL = "real";
-const BACKEND_MODE_MOCK = "mock";
-
-type BackendMode = typeof BACKEND_MODE_REAL | typeof BACKEND_MODE_MOCK;
-
 export class BackendConfigurationError extends Error {
   constructor(message: string) {
     super(message);
@@ -12,34 +7,8 @@ export class BackendConfigurationError extends Error {
   }
 }
 
-export function isMockBackendEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_BACKEND_MODE?.trim().toLowerCase() === BACKEND_MODE_MOCK;
-}
-
 function resolveBackendUrl(): string | null {
   return getApiBaseUrl();
-}
-
-function readBackendMode(): BackendMode | null {
-  const configuredMode = process.env.NEXT_PUBLIC_BACKEND_MODE?.trim().toLowerCase();
-
-  if (configuredMode === BACKEND_MODE_REAL) {
-    return configuredMode;
-  }
-
-  return null;
-}
-
-function getBackendMode(): BackendMode {
-  const mode = readBackendMode();
-
-  if (!mode) {
-    throw new BackendConfigurationError(
-      "Backend mode is not configured. Set NEXT_PUBLIC_BACKEND_MODE to 'real'."
-    );
-  }
-
-  return mode;
 }
 
 function getRequiredBackendUrl() {
@@ -55,7 +24,7 @@ function getRequiredBackendUrl() {
 }
 
 export function isBackendConfigured() {
-  return readBackendMode() === BACKEND_MODE_REAL && Boolean(resolveBackendUrl());
+  return Boolean(resolveBackendUrl());
 }
 
 function getAuthHeaders(customToken?: string): Record<string, string> {

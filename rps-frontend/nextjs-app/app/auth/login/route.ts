@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { DEMO_AUTH_TOKEN, type AuthResponse, type LoginCredentials } from "@/lib/backend/auth";
-import { isMockBackendEnabled, postBackend } from "@/lib/backend/client";
+import { type AuthResponse, type LoginCredentials } from "@/lib/backend/auth";
+import { postBackend } from "@/lib/backend/client";
 
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
@@ -23,24 +23,14 @@ async function persistSession(response: AuthResponse) {
 export async function POST(request: Request) {
   try {
     const credentials = (await request.json()) as LoginCredentials;
-    const response = isMockBackendEnabled()
-      ? {
-          user: {
-            id: 0,
-            email: credentials.email.trim().toLowerCase(),
-            name: "Démo administrateur",
-          },
-          token: DEMO_AUTH_TOKEN,
-        }
-      : await postBackend<AuthResponse, LoginCredentials>("/auth/login", credentials);
+    const response = await postBackend<AuthResponse, LoginCredentials>("/auth/login", credentials);
 
     await persistSession(response);
     return NextResponse.json(response);
   } catch (error) {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Identifiants incorrects.",
+        error: error instanceof Error ? error.message : "Identifiants incorrects.",
       },
       { status: 401 },
     );

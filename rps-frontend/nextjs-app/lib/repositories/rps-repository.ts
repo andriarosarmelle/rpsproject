@@ -1,13 +1,5 @@
 import {
-  demoSurveyAccessToken,
-  getDemoDataset,
-  reportData,
-  reportTemplateData,
-  trendByRange,
-} from "@/lib/demo-data";
-import {
   BackendConfigurationError,
-  isMockBackendEnabled,
 } from "@/lib/backend/client";
 import {
   getServerBackendCollection as getBackendCollection,
@@ -146,6 +138,31 @@ export type ReportDocumentData = {
   template: ReportTemplateData;
 };
 
+const EMPTY_TREND_BY_RANGE = {
+  monthly: [] as { label: string; value: number }[],
+  weekly: [] as { label: string; value: number }[],
+};
+
+const DEFAULT_REPORT_TEMPLATE: ReportTemplateData = {
+  templateName: "Rapport RPS",
+  executiveSummaryTitle: "Synthese executive",
+  executiveSummaryBody: "",
+  methodologyTitle: "Methodologie",
+  methodologyBody: "",
+  recommendationsTitle: "Recommandations",
+  recommendationsIntro: "",
+  consultantNotesTitle: "Notes consultant",
+  consultantNotesPlaceholder: "",
+  conclusionTitle: "Conclusion",
+  conclusionBody: "",
+};
+
+const DEFAULT_REPORT_FALLBACK = {
+  title: "Rapport RPS",
+  companyName: "Entreprise",
+  riskAreas: [] as string[],
+};
+
 function toRepositoryError(message: string, error?: unknown): RepositoryDataError {
   if (error instanceof BackendConfigurationError) {
     throw error;
@@ -241,90 +258,57 @@ export async function getSurveyBuilderData(
   scenario?: string | null,
   campaignId?: number | null,
 ): Promise<SurveyBuilderData> {
-  const demoDataset = getDemoDataset(scenario);
+  try {
+    const [campaigns, companies] = await Promise.all([
+      getBackendCollection<BackendCampaign>("/campaigns"),
+      getBackendCollection<BackendCompany>("/companies"),
+    ]);
+    const activeCampaign = resolveSelectedCampaign(campaigns, campaignId);
+    const companyOptions = companies.map((company) => ({
+      id: company.id,
+      name: company.name,
+    }));
 
-  if (!isMockBackendEnabled()) {
-    try {
-      const [campaigns, companies] = await Promise.all([
-        getBackendCollection<BackendCampaign>("/campaigns"),
-        getBackendCollection<BackendCompany>("/companies"),
-      ]);
-      const activeCampaign = resolveSelectedCampaign(campaigns, campaignId);
-      const companyOptions = companies.map((company) => ({
-        id: company.id,
-        name: company.name,
-      }));
+    const campaignOptions = campaigns.map((campaign) => ({
+      id: campaign.id,
+      name: campaign.name,
+      status: mapCampaignStatus(campaign.status),
+      companyId: campaign.company?.id ?? null,
+    }));
 
-      const campaignOptions = campaigns.map((campaign) => ({
-        id: campaign.id,
-        name: campaign.name,
-        status: mapCampaignStatus(campaign.status),
-        companyId: campaign.company?.id ?? null,
-      }));
-
-      if (activeCampaign) {
-        const mappedCampaign = mapBackendCampaign(activeCampaign);
-        const activeCompanyId = activeCampaign.company?.id ?? null;
-
-        return {
-          campaignId: activeCampaign.id,
-          companyId: activeCompanyId,
-          companies: companyOptions,
-          campaigns: campaignOptions,
-          title: mappedCampaign.title,
-          description: mappedCampaign.description,
-          status: mappedCampaign.status,
-          startDate: mappedCampaign.startDate ?? "",
-          endDate: mappedCampaign.endDate ?? "",
-          questions: mappedCampaign.questions,
-        };
-      }
+    if (activeCampaign) {
+      const mappedCampaign = mapBackendCampaign(activeCampaign);
+      const activeCompanyId = activeCampaign.company?.id ?? null;
 
       return {
-        campaignId: null,
-        companyId: companyOptions[0]?.id ?? null,
+        campaignId: activeCampaign.id,
+        companyId: activeCompanyId,
         companies: companyOptions,
         campaigns: campaignOptions,
-        title: "",
-        description: "",
-        status: "draft",
-        startDate: "",
-        endDate: "",
-        questions: [],
+        title: mappedCampaign.title,
+        description: mappedCampaign.description,
+        status: mappedCampaign.status,
+        startDate: mappedCampaign.startDate ?? "",
+        endDate: mappedCampaign.endDate ?? "",
+        questions: mappedCampaign.questions,
       };
-    } catch (error) {
-      throw toRepositoryError("Impossible de charger le builder de sondage.", error);
     }
+
+    return {
+      campaignId: null,
+      companyId: companyOptions[0]?.id ?? null,
+      companies: companyOptions,
+      campaigns: campaignOptions,
+      title: "",
+      description: "",
+      status: "draft",
+      startDate: "",
+      endDate: "",
+      questions: [],
+    };
+  } catch (error) {
+    throw toRepositoryError("Impossible de charger le builder de sondage.", error);
   }
-
-  const currentCampaign = await getSurveyCampaign(scenario);
-
-  return {
-    campaignId: currentCampaign.id ?? null,
-    companyId: 1,
-    companies: [
-      {
-        id: 1,
-        name: currentCampaign.companyName || demoDataset.campaign.companyName,
-      },
-    ],
-    campaigns: [
-      {
-        id: currentCampaign.id ?? 1,
-        name: currentCampaign.title,
-        status: currentCampaign.status,
-        companyId: 1,
-      },
-    ],
-    title: currentCampaign.title,
-    description: currentCampaign.description ?? "",
-    status: currentCampaign.status,
-    startDate: currentCampaign.startDate ?? "",
-    endDate: currentCampaign.endDate ?? "",
-    questions: currentCampaign.questions.length
-      ? currentCampaign.questions
-      : demoDataset.campaign.questions,
-  };
 }
 
 export async function getEmployees(scenario?: string | null) {
@@ -340,88 +324,50 @@ export async function getEmployeeManagementData(
   scenario?: string | null,
   campaignId?: number | null,
 ): Promise<EmployeeManagementData> {
-  const demoDataset = getDemoDataset(scenario);
+  try {
+    const campaigns = await getBackendCollection<BackendCampaign>("/campaigns");
+    const activeCampaign =
+      (campaignId ? campaigns.find((item) => item.id === campaignId) : null) ??
+      campaigns.find((item) => item.status === "active") ??
+      campaigns[0];
 
-  if (!isMockBackendEnabled()) {
-    try {
-      const campaigns = await getBackendCollection<BackendCampaign>("/campaigns");
-      const activeCampaign =
-        (campaignId ? campaigns.find((item) => item.id === campaignId) : null) ??
-        campaigns.find((item) => item.status === "active") ??
-        campaigns[0];
-
-      if (!activeCampaign) {
-        return buildEmptyEmployeeManagementData();
-      }
-
-      const progress = await getBackendItem<BackendCampaignProgress>(
-        `/campaign-participants/campaign/${activeCampaign.id}/progress`,
-      );
-
-      return {
-        campaignId: activeCampaign.id,
-        companyId: activeCampaign.company?.id ?? null,
-        campaignName: activeCampaign.name,
-        campaignStatus: activeCampaign.status,
-        participationRate: progress.participation_rate,
-        totalParticipants: progress.total_participants,
-        completedParticipants: progress.completed_participants,
-        pendingParticipants: progress.pending_participants,
-        remindedParticipants: progress.reminded_participants,
-        participants: progress.participants.map((participant) => ({
-            id: participant.id,
-            employeeId: participant.employee.id,
-            name: `${participant.employee.first_name} ${participant.employee.last_name}`.trim(),
-            email: participant.employee.email,
-            department: participant.employee.department ?? "Non renseigne",
-            status: participant.status,
-            responseStatus:
-              participant.status === "completed" ? "Responded" : "Not responded",
-            invitationSentAt: participant.invitation_sent_at,
-            reminderSentAt: participant.reminder_sent_at,
-            completedAt: participant.completed_at,
-            participationToken: participant.participation_token,
-            surveyUrl: `/survey-response/${participant.participation_token}`,
-          })),
-      };
-    } catch (error) {
-      throw toRepositoryError("Impossible de charger les participants du sondage.", error);
+    if (!activeCampaign) {
+      return buildEmptyEmployeeManagementData();
     }
-  }
 
-  return {
-    campaignId: null,
-    companyId: null,
-    campaignName: "",
-    campaignStatus: "draft",
-    participationRate: 0,
-    totalParticipants: 0,
-    completedParticipants: demoDataset.employees.filter(
-      (employee) => employee.responseStatus === "Responded",
-    ).length,
-    pendingParticipants: demoDataset.employees.filter(
-      (employee) => employee.responseStatus !== "Responded",
-    ).length,
-    remindedParticipants: 1,
-    participants: demoDataset.employees.map((employee, index) => ({
-      id: employee.id,
-      employeeId: employee.id,
-      name: employee.name,
-      email: employee.email,
-      department: employee.department,
-      status: employee.responseStatus === "Responded" ? "completed" : "pending",
-      responseStatus: employee.responseStatus,
-      invitationSentAt: "2026-03-15T09:00:00.000Z",
-      reminderSentAt:
-        employee.responseStatus === "Responded" || index > 1
-          ? null
-          : "2026-03-20T09:00:00.000Z",
-      completedAt:
-        employee.responseStatus === "Responded" ? "2026-03-18T09:00:00.000Z" : null,
-      participationToken: `${demoSurveyAccessToken}-${employee.id}`,
-      surveyUrl: `/survey-response/${demoSurveyAccessToken}-${employee.id}`,
-    })),
-  };
+    const progress = await getBackendItem<BackendCampaignProgress>(
+      `/campaign-participants/campaign/${activeCampaign.id}/progress`,
+    );
+
+    return {
+      campaignId: activeCampaign.id,
+      companyId: activeCampaign.company?.id ?? null,
+      campaignName: activeCampaign.name,
+      campaignStatus: activeCampaign.status,
+      participationRate: progress.participation_rate,
+      totalParticipants: progress.total_participants,
+      completedParticipants: progress.completed_participants,
+      pendingParticipants: progress.pending_participants,
+      remindedParticipants: progress.reminded_participants,
+      participants: progress.participants.map((participant) => ({
+          id: participant.id,
+          employeeId: participant.employee.id,
+          name: `${participant.employee.first_name} ${participant.employee.last_name}`.trim(),
+          email: participant.employee.email,
+          department: participant.employee.department ?? "Non renseigne",
+          status: participant.status,
+          responseStatus:
+            participant.status === "completed" ? "Responded" : "Not responded",
+          invitationSentAt: participant.invitation_sent_at,
+          reminderSentAt: participant.reminder_sent_at,
+          completedAt: participant.completed_at,
+          participationToken: participant.participation_token,
+          surveyUrl: `/survey-response/${participant.participation_token}`,
+        })),
+    };
+  } catch (error) {
+    throw toRepositoryError("Impossible de charger les participants du sondage.", error);
+  }
 }
 
 export async function getDashboardData(
@@ -507,14 +453,14 @@ export async function getReportData(
 
 export async function getReportTemplateData(): Promise<ReportTemplateData> {
   if (!isStrapiConfigured()) {
-    return reportTemplateData;
+    return DEFAULT_REPORT_TEMPLATE;
   }
 
   try {
     const response = await getStrapiSingle<StrapiReportTemplate>("/api/report-template");
     return mapStrapiReportTemplate(response.data);
   } catch {
-    return reportTemplateData;
+    return DEFAULT_REPORT_TEMPLATE;
   }
 }
 
@@ -606,25 +552,6 @@ function mapBackendQuestionnaire(entry: BackendQuestionnaire): SurveyResponseDat
       .slice()
       .sort((a, b) => a.order_index - b.order_index)
       .map(mapBackendQuestion),
-  };
-}
-
-function buildDemoSurveyOption(demoDataset: ReturnType<typeof getDemoDataset>): SurveyOption {
-  const completedParticipants = demoDataset.employees.filter(
-    (employee) => employee.responseStatus === "Responded",
-  ).length;
-
-  return {
-    id: demoDataset.campaign.id ?? 1,
-    title: demoDataset.campaign.title,
-    status: demoDataset.campaign.status,
-    companyId: 1,
-    companyName: demoDataset.campaign.companyName ?? "Entreprise demo",
-    startDate: demoDataset.campaign.startDate ?? "",
-    endDate: demoDataset.campaign.endDate ?? "",
-    participationRate: demoDataset.dashboardMetrics.participationRate,
-    totalParticipants: demoDataset.employees.length,
-    completedParticipants,
   };
 }
 
@@ -838,12 +765,12 @@ function buildReportData(
       ? `${campaign.name}`
       : reports[0]
         ? `${reports[0].campaign.name}`
-        : reportData.title,
-    companyName: campaign?.company?.name ?? reportData.companyName,
+        : DEFAULT_REPORT_FALLBACK.title,
+    companyName: campaign?.company?.name ?? DEFAULT_REPORT_FALLBACK.companyName,
     participationRate: dashboardData.metrics.participationRate,
     averageStress: Number(resultsData.metrics.averageStress),
     alertCount: dashboardData.metrics.alertsDetected,
-    riskAreas: riskAreas.length ? riskAreas : reportData.riskAreas,
+    riskAreas: riskAreas.length ? riskAreas : DEFAULT_REPORT_FALLBACK.riskAreas,
     recommendations: buildRecommendations(riskAreas, dashboardData.metrics.participationRate),
     archivedReportPath: latestReport?.report_path ?? null,
   };
@@ -899,8 +826,8 @@ function buildTrendByRange(responses: BackendResponse[]) {
   const weekly = buildAveragedSeries(scaleResponses, "week", 5);
 
   return {
-    monthly: monthly.length ? monthly : trendByRange.monthly,
-    weekly: weekly.length ? weekly : trendByRange.weekly,
+    monthly: monthly.length ? monthly : EMPTY_TREND_BY_RANGE.monthly,
+    weekly: weekly.length ? weekly : EMPTY_TREND_BY_RANGE.weekly,
   };
 }
 

@@ -27,28 +27,28 @@ export default function ForgotPasswordPage() {
           <div className="flex flex-col items-start gap-3">
             <BrandLogo />
             <span className="inline-flex rounded-full border border-[#d6c199] bg-[#fff7ea] px-4 py-1.5 text-[0.65rem] font-bold uppercase tracking-[0.22em] text-[#8a651f]">
-              Accès administrateur
+              Acces administrateur
             </span>
           </div>
 
           <h1 className="max-w-2xl font-[family-name:var(--font-manrope)] text-4xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-5xl">
-            Informations de connexion.
+            Recuperation d'acces.
           </h1>
 
           <p className="max-w-2xl text-base leading-7 text-slate-600">
-            L'authentification est desactivée. Cette page sert seulement à mémoriser une adresse email locale si vous le souhaitez.
+            Saisissez votre adresse email pour enregistrer une demande de recuperation d'acces.
           </p>
         </section>
 
         <Card className="mx-auto w-full max-w-md rounded-[22px] border border-[#dfd1b9] bg-[rgba(255,252,246,0.95)] p-6 shadow-[0_24px_60px_rgba(40,33,24,0.16)] sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8a651f]">
-            Mode démo
+            Assistance connexion
           </p>
           <h2 className="mt-2 font-[family-name:var(--font-manrope)] text-2xl font-extrabold tracking-tight text-slate-900">
-            Session sans mot de passe
+            Reinitialiser mon acces
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Vous pouvez entrer n'importe quelle adresse email pour la conserver visuellement, mais aucun mot de passe n'est requis.
+            Cette page conserve votre demande localement en attendant l'implementation complete du flux de reinitialisation.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -63,15 +63,15 @@ export default function ForgotPasswordPage() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="w-full rounded-[12px] border border-[#ddd2c0] bg-[#f8f3ea] px-4 py-3 text-sm outline-none transition focus:border-[#c9a86c] focus:ring-2 focus:ring-[#c9a86c]/30"
-                placeholder="demo@laroche360.ca"
+                placeholder="admin@entreprise.com"
               />
             </div>
 
             {submittedEmail ? (
               <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                Adresse enregistrée : <span className="font-semibold">{submittedEmail}</span>.
+                Demande enregistree pour <span className="font-semibold">{submittedEmail}</span>.
                 <br />
-                L'application fonctionne actuellement sans authentification. Revenez à la connexion ou ouvrez directement le tableau de bord.
+                Revenez a la connexion et utilisez un compte administrateur valide.
               </div>
             ) : null}
 
@@ -79,16 +79,16 @@ export default function ForgotPasswordPage() {
               type="submit"
               className="w-full rounded-[12px] border border-[#d5ba85] bg-[#181818] px-5 py-3 text-sm font-semibold text-[#f7f1e6] shadow-[0_14px_28px_rgba(24,24,24,0.14)] transition hover:-translate-y-0.5 hover:bg-[#242424]"
             >
-              Enregistrer cette adresse
+              Enregistrer la demande
             </button>
           </form>
 
           <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
             <Link href="/login" className="text-[#8a651f] underline-offset-4 hover:underline">
-              Retour à la connexion
+              Retour a la connexion
             </Link>
             <Link href="/signup" className="text-slate-600 underline-offset-4 hover:underline">
-              Personnaliser la session
+              Creer un compte
             </Link>
           </div>
         </Card>

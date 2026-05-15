@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { isMockBackendEnabled } from "@/lib/backend/client";
 import {
   deleteServerBackend as deleteBackend,
   patchServerBackend as patchBackend,
@@ -79,10 +78,6 @@ type AdminSurveyPayload =
 
 export async function POST(request: Request) {
   const payload = (await request.json()) as AdminSurveyPayload;
-
-  if (isMockBackendEnabled()) {
-    return NextResponse.json({ success: true, mode: "demo" });
-  }
 
   try {
     switch (payload.action) {

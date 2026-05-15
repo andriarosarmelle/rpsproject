@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { isMockBackendEnabled } from "@/lib/backend/client";
 import { postServerBackend as postBackend } from "@/lib/backend/server";
 
 type SurveySubmissionPayload = {
@@ -19,10 +18,6 @@ export async function POST(request: Request) {
       { message: "Les identifiants de l'employé ou du participant et les réponses sont requis." },
       { status: 400 },
     );
-  }
-
-  if (isMockBackendEnabled()) {
-    return NextResponse.json({ success: true, mode: "demo" });
   }
 
   try {

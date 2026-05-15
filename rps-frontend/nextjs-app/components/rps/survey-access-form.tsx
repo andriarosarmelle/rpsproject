@@ -2,8 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { demoSurveyAccessToken } from "@/lib/demo-data";
-import { Card, PrimaryButton, SecondaryButton } from "@/components/rps/ui";
+import { Card, PrimaryButton } from "@/components/rps/ui";
 
 export function SurveyAccessForm() {
   const router = useRouter();
@@ -49,9 +48,6 @@ export function SurveyAccessForm() {
           >
             {isPending ? "Ouverture..." : "Acceder au questionnaire"}
           </PrimaryButton>
-          <SecondaryButton className="sm:w-auto" onClick={() => openSurvey(demoSurveyAccessToken)}>
-            Ouvrir la demo salarie
-          </SecondaryButton>
         </div>
       </div>
     </Card>

@@ -71,15 +71,6 @@ export async function register(credentials: RegisterCredentials): Promise<AuthRe
   return readJsonOrThrow<AuthResponse>(response);
 }
 
-export const DEMO_AUTH_TOKEN = "auth-disabled";
-
-export function createDemoAuthResponse(): AuthResponse {
-  return {
-    user: { id: 0, email: "admin@demo.com", name: "Admin Demo" },
-    token: DEMO_AUTH_TOKEN,
-  };
-}
-
 export async function logout() {
   await appFetch("/auth/logout", {
     method: "POST",
@@ -109,9 +100,5 @@ export function getUser(): User | null {
 }
 
 export function isAuthenticated(): boolean {
-  return false;
-}
-
-export function isDemoSession(): boolean {
   return false;
 }

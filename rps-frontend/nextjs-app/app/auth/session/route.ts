@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createDemoAuthResponse, DEMO_AUTH_TOKEN, type User } from "@/lib/backend/auth";
-import { getBackendItem, isMockBackendEnabled } from "@/lib/backend/client";
+import { type User } from "@/lib/backend/auth";
+import { getBackendItem } from "@/lib/backend/client";
 
 function clearSessionCookies(response: NextResponse) {
   response.cookies.set("auth_token", "", {
@@ -26,10 +26,6 @@ export async function GET() {
 
   if (!token) {
     return NextResponse.json({ user: null }, { status: 401 });
-  }
-
-  if (token === DEMO_AUTH_TOKEN && isMockBackendEnabled()) {
-    return NextResponse.json({ user: createDemoAuthResponse().user });
   }
 
   try {

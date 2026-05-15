@@ -15,7 +15,6 @@ services:
       DB_NAME: ${DB_NAME:-rps_db}
       DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-false}
       DB_LOGGING: ${DB_LOGGING:-false}
-      AUTH_DISABLED: ${AUTH_DISABLED:-false}
       ADMIN_ALLOWED_EMAILS: ${ADMIN_ALLOWED_EMAILS:-}
       ADMIN_BOOTSTRAP_EMAILS: ${ADMIN_BOOTSTRAP_EMAILS:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
@@ -45,7 +44,6 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost}
         NEXT_PUBLIC_STRAPI_URL: ${NEXT_PUBLIC_STRAPI_URL:-}
-        NEXT_PUBLIC_BACKEND_MODE: ${NEXT_PUBLIC_BACKEND_MODE:-real}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -53,7 +51,6 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost}
       NEXT_PUBLIC_STRAPI_URL: ${NEXT_PUBLIC_STRAPI_URL:-}
-      NEXT_PUBLIC_BACKEND_MODE: ${NEXT_PUBLIC_BACKEND_MODE:-real}
       API_URL: http://backend:3000/api
       APP_URL: ${APP_URL:-http://localhost}
       STRAPI_API_TOKEN: ${STRAPI_API_TOKEN:-}

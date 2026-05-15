@@ -1,10 +1,10 @@
 -- Script de seed pour la base de données RPS Platform
 -- A exécuter après init-db.sql
 
--- Utilisateur admin par défaut
+-- Utilisateur administrateur de depart
 -- Mot de passe: password (hash bcrypt)
 INSERT INTO users (name, email, password)
-VALUES ('Admin Demo', 'admin@demo-rps.fr', '$2b$10$rH0z9X.vKJH7qN8qN8qN8OYqZ9X.vKJH7qN8qN8qN8OYqZ9X.vKJH');
+VALUES ('Administrateur RPS', 'admin@rps.local', '$2b$10$rH0z9X.vKJH7qN8qN8qN8OYqZ9X.vKJH7qN8qN8qN8OYqZ9X.vKJH');
 
 -- Utilisatrices Laroche 360 (Canada)
 -- Mot de passe: password (hash bcrypt identique)
@@ -13,7 +13,7 @@ VALUES
   ('Isabelle Laroche', 'isabelle@laroche360.ca', '$2b$10$rH0z9X.vKJH7qN8qN8qN8OYqZ9X.vKJH7qN8qN8qN8OYqZ9X.vKJH'),
   ('Roxanne Laroche', 'roxanne@laroche360.ca', '$2b$10$rH0z9X.vKJH7qN8qN8qN8OYqZ9X.vKJH7qN8qN8qN8OYqZ9X.vKJH');
 
--- Entreprise demo
+-- Entreprise de reference
 INSERT INTO companies (name) VALUES ('Laroche Consulting');
 
 -- Campagne active
