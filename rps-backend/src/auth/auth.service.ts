@@ -22,6 +22,10 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function hasUsablePasswordHash(password: string | null | undefined) {
+  return typeof password === 'string' && /^\$2[aby]\$\d{2}\$/.test(password);
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -33,25 +37,46 @@ export class AuthService {
 
   async register(registerDto: RegisterDto) {
     const normalizedEmail = normalizeEmail(registerDto.email);
-    
+
     // Check if registration is allowed for this email
     const allowedAdminEmails = getAllowedAdminEmails();
     const isExplicitlyAllowed = allowedAdminEmails.includes(normalizedEmail);
     const isDomainAllowed = isRegistrationAllowed(normalizedEmail);
-    
+
     if (!isExplicitlyAllowed && !isDomainAllowed) {
-      throw new ForbiddenException('Registration restricted to authorized emails or domains');
+      throw new ForbiddenException(
+        "L'inscription est réservée aux administrateurs autorisés.",
+      );
     }
 
     const existingUser = await this.userRepository?.findOne({
       where: { email: normalizedEmail },
     });
 
+    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+
     if (existingUser) {
-      throw new ConflictException('Email already exists');
+      if (hasUsablePasswordHash(existingUser.password)) {
+        throw new ConflictException('Email already exists');
+      }
+
+      existingUser.name = registerDto.name;
+      existingUser.email = normalizedEmail;
+      existingUser.password = hashedPassword;
+
+      const activatedUser = await this.userRepository?.save(existingUser);
+      const token = this.generateToken(activatedUser!);
+
+      return {
+        user: {
+          id: activatedUser!.id,
+          email: activatedUser!.email,
+          name: activatedUser!.name,
+        },
+        token,
+      };
     }
 
-    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
     const user = this.userRepository?.create({
       ...registerDto,
       email: normalizedEmail,

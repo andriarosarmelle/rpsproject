@@ -27,28 +27,28 @@ export default function ForgotPasswordPage() {
           <div className="flex flex-col items-start gap-3">
             <BrandLogo />
             <span className="inline-flex rounded-full border border-[#d6c199] bg-[#fff7ea] px-4 py-1.5 text-[0.65rem] font-bold uppercase tracking-[0.22em] text-[#8a651f]">
-              Acces administrateur
+              Accès administrateur
             </span>
           </div>
 
           <h1 className="max-w-2xl font-[family-name:var(--font-manrope)] text-4xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-5xl">
-            Recuperation d'acces.
+            Récupération d'accès.
           </h1>
 
           <p className="max-w-2xl text-base leading-7 text-slate-600">
-            Saisissez votre adresse email pour enregistrer une demande de recuperation d'acces.
+            Saisissez votre adresse email pour enregistrer une demande de récupération d'accès.
           </p>
         </section>
 
         <Card className="mx-auto w-full max-w-md rounded-[22px] border border-[#dfd1b9] bg-[rgba(255,252,246,0.95)] p-6 shadow-[0_24px_60px_rgba(40,33,24,0.16)] sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8a651f]">
-            Assistance connexion
+            Assistance de connexion
           </p>
           <h2 className="mt-2 font-[family-name:var(--font-manrope)] text-2xl font-extrabold tracking-tight text-slate-900">
-            Reinitialiser mon acces
+            Récupérer mon accès
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Cette page conserve votre demande localement en attendant l'implementation complete du flux de reinitialisation.
+            Cette page conserve votre demande localement en attendant l'implémentation complète du flux de récupération.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -69,9 +69,9 @@ export default function ForgotPasswordPage() {
 
             {submittedEmail ? (
               <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                Demande enregistree pour <span className="font-semibold">{submittedEmail}</span>.
+                Demande enregistrée pour <span className="font-semibold">{submittedEmail}</span>.
                 <br />
-                Revenez a la connexion et utilisez un compte administrateur valide.
+                Revenez à la connexion et utilisez un compte administrateur valide.
               </div>
             ) : null}
 
@@ -85,10 +85,10 @@ export default function ForgotPasswordPage() {
 
           <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
             <Link href="/login" className="text-[#8a651f] underline-offset-4 hover:underline">
-              Retour a la connexion
+              Retour à la connexion
             </Link>
             <Link href="/signup" className="text-slate-600 underline-offset-4 hover:underline">
-              Creer un compte
+              Créer un compte
             </Link>
           </div>
         </Card>

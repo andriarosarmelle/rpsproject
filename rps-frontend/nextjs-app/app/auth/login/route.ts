@@ -28,9 +28,16 @@ export async function POST(request: Request) {
     await persistSession(response);
     return NextResponse.json(response);
   } catch (error) {
+    const message =
+      error instanceof Error && /401\s+Unauthorized.*Invalid credentials/i.test(error.message)
+        ? "Identifiants incorrects."
+        : error instanceof Error
+          ? error.message
+          : "Identifiants incorrects.";
+
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Identifiants incorrects.",
+        error: message,
       },
       { status: 401 },
     );
