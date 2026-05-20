@@ -122,6 +122,40 @@ is_local_db_host() {
   esac
 }
 
+csf_rule_exists() {
+  local rule="$1"
+
+  if [ ! -f /etc/csf/csf.allow ]; then
+    return 1
+  fi
+
+  grep -Fqx "$rule" /etc/csf/csf.allow
+}
+
+warn_if_csf_may_block_local_db() {
+  if ! command -v csf >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local missing_rules=0
+
+  if ! csf_rule_exists 'tcp|in|d=5432|s=172.17.0.0/16'; then
+    missing_rules=1
+  fi
+
+  if ! csf_rule_exists 'tcp|in|d=5432|s=172.18.0.0/16'; then
+    missing_rules=1
+  fi
+
+  if [ "$missing_rules" -eq 1 ]; then
+    echo "WARNING: CSF is installed and may block Docker containers from reaching PostgreSQL on the VPS host."
+    echo "WARNING: If DB_HOST points to the VPS itself, make sure /etc/csf/csf.allow contains:"
+    echo "WARNING:   tcp|in|d=5432|s=172.17.0.0/16"
+    echo "WARNING:   tcp|in|d=5432|s=172.18.0.0/16"
+    echo "WARNING: Then reload CSF with: sudo csf -r"
+  fi
+}
+
 if [ -z "$PUBLIC_BASE_URL" ]; then
   if [ -n "$DOMAIN_NAME" ]; then
     PUBLIC_BASE_URL="https://$DOMAIN_NAME"
@@ -288,6 +322,8 @@ ensure_external_database_ready() {
   if is_local_db_host "$SOURCE_DB_HOST"; then
     echo "Database host '$SOURCE_DB_HOST' is local to the VPS; containers will use '$CONTAINER_DB_HOST'."
     echo "Make sure PostgreSQL listens on the Docker bridge interface and allows connections from containers."
+    echo "Typical fix: set listen_addresses = '*' (or the bridge IP) and add a matching pg_hba.conf host rule."
+    warn_if_csf_may_block_local_db
   fi
 
   echo "Verifying external database connectivity..."
@@ -298,7 +334,7 @@ ensure_external_database_ready() {
     -e DB_PASSWORD="$DB_PASSWORD" \
     -e DB_NAME="$maintenance_db" \
     backend \
-    node -e "const { Client } = require('pg'); (async () => { const client = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME, connectionTimeoutMillis: 10000 }); await client.connect(); await client.end(); console.log('[db] External database connection OK.'); })().catch((error) => { console.error('[db] External database connection failed:', error.stack || error.message); console.error('[db] If PostgreSQL runs on the VPS host, ensure it listens beyond localhost and accepts Docker bridge connections.'); process.exit(1); });"
+    node -e "const { Client } = require('pg'); (async () => { const client = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME, connectionTimeoutMillis: 10000 }); await client.connect(); await client.end(); console.log('[db] External database connection OK.'); })().catch((error) => { console.error('[db] External database connection failed:', error.stack || error.message); console.error('[db] If PostgreSQL runs on the VPS host, ensure it listens beyond localhost and accepts Docker bridge connections.'); console.error('[db] Check postgresql.conf listen_addresses and pg_hba.conf host entries for the Docker bridge subnet.'); console.error('[db] If CSF is enabled, allow Docker bridge ranges to reach 5432 and reload CSF.'); process.exit(1); });"
 
   echo "Ensuring application and n8n databases exist..."
   docker compose run --rm --no-deps \

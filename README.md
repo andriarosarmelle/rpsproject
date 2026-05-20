@@ -490,6 +490,26 @@ GRANT ALL PRIVILEGES ON DATABASE rps_platform TO rpsuser;
 sudo -u postgres psql -c "ALTER USER rpsuser WITH PASSWORD 'mot_de_passe_securise';"
 ```
 
+Si `DB_HOST=localhost` dans le workflow de déploiement, le script VPS remplace cette valeur par `host.docker.internal` pour les conteneurs Docker. PostgreSQL doit donc écouter au-delà de `localhost` et autoriser le sous-réseau du bridge Docker.
+
+Exemple de réglages à vérifier sur le VPS :
+
+```conf
+# postgresql.conf
+listen_addresses = '*'
+```
+
+```conf
+# pg_hba.conf
+host    all    all    172.17.0.0/16    md5
+```
+
+Puis redémarrer PostgreSQL :
+
+```bash
+sudo systemctl restart postgresql
+```
+
 ### 2. Configuration des Variables d'Environnement de Production
 
 Créez les fichiers `.env` avec des valeurs sécurisées :
