@@ -346,7 +346,7 @@ Le pipeline [`.github/workflows/rps_deployment.yml`](.github/workflows/rps_deplo
 
 ### Déclencheurs
 
-| événement | Branche | Action |
+| Evénement | Branche | Action |
 |-----------|---------|--------|
 | Push | `main` | Build + déploiement sur `rps_dev` |
 | Push | `deploy` | Build + déploiement sur `development` |
@@ -378,7 +378,7 @@ Pour configurer le déploiement, ajouter ces secrets dans les settings du reposi
 4. Nginx installé
 5. Accés SSH avec clé privée
 
-### étapes de Déploiement
+### Etapes de Déploiement
 
 #### 1. Connexion au VPS
 
@@ -407,7 +407,7 @@ pm2 startup
 # Suivre les instructions affichées
 ```
 
-#### 4. Clone du Repository
+#### 4. Clône du Repository
 
 ```bash
 cd /var/www/rps-prod
