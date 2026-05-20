@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, GripHorizontal } from "lucide-react";
 import { Card, PrimaryButton, SecondaryButton } from "@/components/rps/ui";
@@ -35,6 +35,13 @@ type ImportedParticipantPayload = {
 type ImportEmployeesResponse = {
   imported_employees?: number;
   participants?: ImportedParticipantPayload[];
+};
+
+type SendInvitationsResponse = {
+  sent_count?: number;
+  failed_count?: number;
+  skipped_count?: number;
+  message?: string;
 };
 
 type SurveyQuestionType = "scale" | "choice" | "text" | "section";
@@ -87,6 +94,8 @@ export function SurveyBuilderDemo({
   const router = useRouter();
   const initialCompanyId = getInitialCompanyId(initialData, mode);
   const [isPending, startTransition] = useTransition();
+  const mutationInFlightRef = useRef(false);
+  const [isMutating, setIsMutating] = useState(false);
   const [companies, setCompanies] = useState(initialData.companies);
   const [campaigns, setCampaigns] = useState(initialData.campaigns);
   const [campaignId, setCampaignId] = useState(
@@ -124,7 +133,14 @@ export function SurveyBuilderDemo({
     participants: Array<{ name: string; email: string; link: string }>;
   } | null>(null);
   const [hasDownloadedLinks, setHasDownloadedLinks] = useState(false);
+  const [hasSentInvitations, setHasSentInvitations] = useState(false);
+  const [isSendingInvitations, setIsSendingInvitations] = useState(false);
+  const [isPreparingImport, setIsPreparingImport] = useState(false);
+  const [participantCount, setParticipantCount] = useState(
+    mode === "create" ? 0 : initialData.participantCount,
+  );
   const canEditQuestions = status !== "active";
+  const isBusy = isPending || isMutating;
   const isCreateMode = mode === "create";
   const selectedCompanyName =
     companies.find((company) => company.id === companyId)?.name?.trim() ?? "";
@@ -132,20 +148,27 @@ export function SurveyBuilderDemo({
   const campaignMatchesCompany =
     !campaignId || !companyId || !selectedCampaign || selectedCampaign.companyId === companyId;
   const trimmedTitle = (title ?? "").trim();
+  const trimmedDescription = description.trim();
   const effectiveCampaignTitle = trimmedTitle;
   const isDateRangeInvalid = isEndDateBeforeStartDate(startDate, endDate);
   const canSaveCampaign =
     Boolean(companyId) && effectiveCampaignTitle.length >= 3 && !isDateRangeInvalid;
   const isSurveyReadyForImport = Boolean(
-    campaignId && companyId && status === "active" && campaignMatchesCompany,
+    campaignId &&
+      companyId &&
+      campaignMatchesCompany &&
+      status === "active" &&
+      questions.length > 0,
   );
   const hasImportedEmployees = Boolean(
-    importSuccess && (importSuccess.count > 0 || importSuccess.participants.length > 0),
+    participantCount > 0 ||
+      (importSuccess && (importSuccess.count > 0 || importSuccess.participants.length > 0)),
   );
   const canActivateCampaign = Boolean(campaignId && questions.length > 0);
   const isAllStepsComplete = Boolean(
     campaignId && status === "active" && questions.length > 0 && hasImportedEmployees,
   );
+  const invitationActionLabel = mode === "edit" ? "Renvoyer" : "Envoyer";
   useEffect(() => {
     setCompanies(initialData.companies);
     setCampaigns(initialData.campaigns);
@@ -173,14 +196,27 @@ export function SurveyBuilderDemo({
     setImportValidationErrors([]);
     setImportSuccess(null);
     setHasDownloadedLinks(false);
+    setHasSentInvitations(false);
     setSelectedFileName(null);
+    setIsPreparingImport(false);
+    setIsSendingInvitations(false);
+    setIsMutating(false);
+    mutationInFlightRef.current = false;
+    setParticipantCount(mode === "create" ? 0 : initialData.participantCount);
   }, [initialData, mode]);
   function runMutation<TResponse>(
     mutation: () => Promise<TResponse>,
     successMessage: string,
     optimistic?: () => void,
     onSuccess?: (result: TResponse) => void,
+    refreshOnSuccess = true,
   ) {
+    if (mutationInFlightRef.current) {
+      return;
+    }
+
+    mutationInFlightRef.current = true;
+    setIsMutating(true);
     setFeedback(null);
     setError(null);
 
@@ -193,7 +229,9 @@ export function SurveyBuilderDemo({
           onSuccess?.(result);
         }
         setFeedback(successMessage);
-        router.refresh();
+        if (refreshOnSuccess) {
+          router.refresh();
+        }
       } catch (caughtError) {
         let errorMessage = "La mise à jour du sondage a échoué. Vérifiez le backend.";
         
@@ -208,6 +246,9 @@ export function SurveyBuilderDemo({
         }
         
         setError(errorMessage);
+      } finally {
+        mutationInFlightRef.current = false;
+        setIsMutating(false);
       }
     });
   }
@@ -249,8 +290,11 @@ export function SurveyBuilderDemo({
         setQuestions([]);
         setImportSuccess(null);
         setHasDownloadedLinks(false);
+        setHasSentInvitations(false);
+        setParticipantCount(0);
         setNewCompanyName("");
       },
+      false,
     );
   }
 
@@ -287,18 +331,64 @@ export function SurveyBuilderDemo({
       setQuestions([]);
       setImportSuccess(null);
       setHasDownloadedLinks(false);
+      setHasSentInvitations(false);
+      setParticipantCount(0);
       return;
     }
     
-    // Filtrer les campagnes pour l'entreprise sélectionnée
     const companyCampaigns = campaigns.filter((c) => c.companyId === nextCompanyId);
-    
-    // Si on change d'entreprise et qu'il y a d'autres campagnes, réinitialiser la campagne
-    if (companyCampaigns.length > 0 && campaignId && !companyCampaigns.find((c) => c.id === campaignId)) {
-      setCampaignId(companyCampaigns[0]?.id ?? null);
+
+    if (companyCampaigns.length > 0) {
+      const nextCampaign =
+        companyCampaigns.find((campaign) => campaign.id === campaignId) ?? companyCampaigns[0];
+      syncSelectedCampaign(nextCampaign.id);
+      return;
     }
 
-    // Le titre ne doit pas etre auto-rempli; il est saisi manuellement.
+    setCampaignId(null);
+    setStatus("draft");
+    setTitle("");
+    setDescription("");
+    setStartDate("");
+    setEndDate("");
+    setQuestions([]);
+    setImportSuccess(null);
+    setHasDownloadedLinks(false);
+    setHasSentInvitations(false);
+    setParticipantCount(0);
+    setError("Aucun sondage existant pour cette entreprise.");
+  }
+
+  function syncSelectedCampaign(nextCampaignId: number) {
+    const nextCampaign = campaigns.find((campaign) => campaign.id === nextCampaignId);
+
+    if (!nextCampaign) {
+      return;
+    }
+
+    setCampaignId(nextCampaign.id);
+    setCompanyId(nextCampaign.companyId);
+    setStatus(nextCampaign.status);
+    setTitle(nextCampaign.name);
+    setDescription(nextCampaign.description);
+    setStartDate(toDateInputValue(nextCampaign.startDate));
+    setEndDate(toDateInputValue(nextCampaign.endDate));
+    setQuestions(
+      nextCampaign.questions
+        .slice()
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map(ensureQuestionOptions),
+    );
+    setImportSuccess(null);
+    setHasDownloadedLinks(false);
+    setHasSentInvitations(false);
+    setParticipantCount(0);
+    setFeedback("Chargement du sondage sélectionné...");
+    setError(null);
+
+    if (mode === "edit") {
+      router.push(`/surveys?tab=edit&campaignId=${nextCampaign.id}`);
+    }
   }
 
   function saveCampaign() {
@@ -319,7 +409,7 @@ export function SurveyBuilderDemo({
             campaignId,
             companyId: selectedCompanyId,
             title: effectiveCampaignTitle,
-            description: description.trim() || undefined,
+            description: trimmedDescription || undefined,
             startDate,
             endDate,
           }),
@@ -329,7 +419,24 @@ export function SurveyBuilderDemo({
           if (result?.status) {
             setStatus(result.status);
           }
+          setCampaigns((current) =>
+            current.map((campaign) =>
+              campaign.id === campaignId
+                ? {
+                    ...campaign,
+                    name: effectiveCampaignTitle,
+                    description: trimmedDescription,
+                    status: result?.status ?? campaign.status,
+                    companyId: selectedCompanyId,
+                    startDate,
+                    endDate,
+                    questions,
+                  }
+                : campaign,
+            ),
+          );
         },
+        mode === "edit",
       );
       return;
     }
@@ -339,7 +446,7 @@ export function SurveyBuilderDemo({
           getTrpcClient().adminSurveys.createCampaign.mutate({
             companyId: selectedCompanyId,
             title: effectiveCampaignTitle,
-            description: description.trim() || undefined,
+            description: trimmedDescription || undefined,
             startDate,
             endDate,
           }),
@@ -348,16 +455,106 @@ export function SurveyBuilderDemo({
       (result) => {
         setCampaignId(result.id);
         setStatus(result.status ?? "preparation");
-        const params = new URLSearchParams();
-        params.set("tab", "edit");
-        params.set("campaignId", String(result.id));
-        router.push(`/surveys?${params.toString()}`);
+        setCampaigns((current) =>
+          current.some((campaign) => campaign.id === result.id)
+            ? current
+            : [
+                ...current,
+                {
+                  id: result.id,
+                  name: effectiveCampaignTitle,
+                  description: trimmedDescription,
+                  status: result.status ?? "preparation",
+                  companyId: selectedCompanyId,
+                  startDate,
+                  endDate,
+                  questions: [],
+                },
+              ],
+        );
+        setParticipantCount(0);
       },
+      false,
     );
   }
 
-  function openImportModal() {
-    if (!campaignId || !companyId) {
+  async function ensureCampaignForImport() {
+    if (!companyId) {
+      setError("Choisis une entreprise avant d'importer les employés.");
+      return null;
+    }
+
+    if (effectiveCampaignTitle.length < 3) {
+      setError("Le nom du sondage doit contenir au moins 3 caractères avant l'import.");
+      return null;
+    }
+
+    if (!trimmedDescription) {
+      setError("Ajoute une description avant d'importer les employés.");
+      return null;
+    }
+
+    if (isDateRangeInvalid) {
+      setError("La date de fin doit être postérieure ou égale à la date de début.");
+      return null;
+    }
+
+    if (campaignId) {
+      return campaignId;
+    }
+
+    const selectedCompanyId = companyId;
+    setIsPreparingImport(true);
+    setFeedback(null);
+    setError(null);
+
+    try {
+      const result = await getTrpcClient().adminSurveys.createCampaign.mutate({
+        companyId: selectedCompanyId,
+        title: effectiveCampaignTitle,
+        description: trimmedDescription,
+        startDate,
+        endDate,
+      });
+
+      setCampaignId(result.id);
+      setStatus(result.status ?? "preparation");
+      setCampaigns((current) =>
+        current.some((campaign) => campaign.id === result.id)
+          ? current
+          : [
+              ...current,
+              {
+                id: result.id,
+                name: effectiveCampaignTitle,
+                description: trimmedDescription,
+                status: result.status ?? "preparation",
+                companyId: selectedCompanyId,
+                startDate,
+                endDate,
+                questions: [],
+              },
+            ],
+      );
+      setParticipantCount(0);
+      setFeedback("Sondage créé. Tu peux maintenant importer les employés.");
+      return result.id;
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "La création du sondage a échoué avant l'import.",
+      );
+      return null;
+    } finally {
+      setIsPreparingImport(false);
+    }
+  }
+
+  async function openImportModal() {
+    const ensuredCampaignId = await ensureCampaignForImport();
+
+    if (!ensuredCampaignId || !companyId) {
       setError("Enregistrez d'abord le sondage avec son entreprise avant d'importer les employés.");
       return;
     }
@@ -367,14 +564,19 @@ export function SurveyBuilderDemo({
       return;
     }
 
-    if (status !== "active") {
-      setError("Activez d'abord le sondage avant d'importer les employés.");
+    if (!isSurveyReadyForImport) {
+      setError(
+        questions.length === 0
+          ? "Crée et vérifie les questions avant d'activer puis d'importer les employés."
+          : "Activez d'abord le sondage avant d'importer les employés.",
+      );
       return;
     }
 
     setImportError(null);
     setImportFeedback(null);
     setHasDownloadedLinks(false);
+    setHasSentInvitations(false);
     setIsImportModalOpen(true);
   }
 
@@ -668,9 +870,13 @@ export function SurveyBuilderDemo({
           count: result.imported_employees || participants.length,
           participants,
         });
+        setParticipantCount(result.imported_employees || participants.length);
         setHasDownloadedLinks(false);
+        setHasSentInvitations(false);
         setImportFeedback("Import terminé. Vous pouvez maintenant télécharger la liste des employés avec leurs liens respectifs.");
-        router.refresh();
+        if (mode === "edit") {
+          router.refresh();
+        }
       } catch (caughtError) {
         let errorMessage = "L'import a échoué. Vérifiez le fichier et réessayez.";
 
@@ -729,6 +935,7 @@ export function SurveyBuilderDemo({
           ),
         );
       },
+      mode === "edit",
     );
   }
 
@@ -836,6 +1043,9 @@ export function SurveyBuilderDemo({
           orderIndex: index,
         }),
       question.type === "section" ? "Section mise à jour." : "Question mise à jour.",
+      undefined,
+      undefined,
+      mode === "edit",
     );
   }
 
@@ -852,6 +1062,8 @@ export function SurveyBuilderDemo({
         }),
       "Question supprimée.",
       () => setQuestions((current) => current.filter((item) => item.id !== question.id)),
+      undefined,
+      mode === "edit",
     );
   }
 
@@ -881,6 +1093,9 @@ export function SurveyBuilderDemo({
           })),
         }),
       "Ordre des questions mis à jour.",
+      undefined,
+      undefined,
+      mode === "edit",
     );
   }
 
@@ -927,6 +1142,7 @@ export function SurveyBuilderDemo({
           setStatus(result.status);
         }
       },
+      mode === "edit",
     );
   }
 
@@ -943,11 +1159,55 @@ export function SurveyBuilderDemo({
     changeCampaignStatus("activateCampaign");
   }
 
-  function handleDeploymentStep() {
-    // À ce stade, l'import est complété, télécharger la liste des liens
-    if (importSuccess && importSuccess.count > 0) {
-      downloadLinksList();
+  async function handleDeploymentStep() {
+    if (!campaignId) {
+      setError("Enregistrez d'abord le sondage avant l'envoi.");
       return;
+    }
+
+    const forceResend = mode === "edit";
+
+    if (
+      forceResend &&
+      !confirm(
+        "Renvoyer les invitations aux employes qui n'ont pas encore repondu ? Le lien affichera le contenu actuel du sondage.",
+      )
+    ) {
+      return;
+    }
+
+    setIsSendingInvitations(true);
+    setFeedback(null);
+    setError(null);
+
+    try {
+      const rawResult = await getTrpcClient().campaignParticipants.sendInvitations.mutate({
+        campaignId,
+        force: forceResend,
+      });
+      const result = rawResult as SendInvitationsResponse;
+      const sentCount = result.sent_count ?? 0;
+      const failedCount = result.failed_count ?? 0;
+
+      setHasSentInvitations(sentCount > 0);
+      setFeedback(
+        failedCount > 0
+          ? `Invitations ${forceResend ? "renvoyees" : "envoyees"} a ${sentCount} employe(s), ${failedCount} echec(s).`
+          : sentCount > 0
+          ? `Invitations ${forceResend ? "renvoyees" : "envoyees"} a ${sentCount} employe(s).`
+          : result.message ?? "Aucune nouvelle invitation a envoyer.",
+      );
+      if (mode === "edit") {
+        router.refresh();
+      }
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "L'envoi automatique a echoue.",
+      );
+    } finally {
+      setIsSendingInvitations(false);
     }
   }
 
@@ -960,19 +1220,33 @@ export function SurveyBuilderDemo({
               Configuration du sondage
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Entreprise, période, description, import et statut.
+              Entreprise, période, description, questions, activation et import.
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <button
               type="button"
               onClick={handleDeploymentStep}
-              disabled={isPending || !isAllStepsComplete}
+              disabled={isBusy || isSendingInvitations || !isAllStepsComplete}
               className="inline-flex items-center justify-center rounded-[10px] bg-[#111827] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
             >
-              Envoyer
+              {isSendingInvitations ? "Envoi..." : invitationActionLabel}
             </button>
-            {hasDownloadedLinks ? (
+            {importSuccess ? (
+              <button
+                type="button"
+                onClick={downloadLinksList}
+                disabled={isBusy || isSendingInvitations}
+                className="inline-flex items-center justify-center rounded-[10px] border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
+              >
+                Télécharger les liens
+              </button>
+            ) : null}
+            {hasSentInvitations ? (
+              <p className="text-[11px] font-medium text-emerald-700">
+                Invitations envoyées
+              </p>
+            ) : hasDownloadedLinks ? (
               <p className="text-[11px] font-medium text-emerald-700">
                 Liens téléchargés
               </p>
@@ -1003,7 +1277,7 @@ export function SurveyBuilderDemo({
                   onChange={(event) => {
                     const newCampaignId = Number(event.target.value);
                     if (newCampaignId) {
-                      router.push(`/surveys?tab=edit&campaignId=${newCampaignId}`);
+                      syncSelectedCampaign(newCampaignId);
                     }
                   }}
                   className="mt-1 w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
@@ -1046,7 +1320,7 @@ export function SurveyBuilderDemo({
                 />
                 <button
                   type="button"
-                  disabled={isPending || newCompanyName.trim().length < 2}
+                  disabled={isBusy || newCompanyName.trim().length < 2}
                   onClick={createCompany}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-slate-300 bg-[#4b5563] text-base font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -1115,46 +1389,28 @@ export function SurveyBuilderDemo({
             />
           </div>
 
-          {/* Card 4: Import */}
+          {/* Card 4: Activation */}
           <div className="relative rounded-[14px] border border-slate-200 bg-[#fbfbfc] p-4 flex flex-col">
             <span className="absolute -left-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] font-bold text-slate-700">
               4
             </span>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
-              Import
-            </p>
-            <button
-              type="button"
-              onClick={openImportModal}
-              disabled={!isSurveyReadyForImport || isPending}
-              className="mt-3 inline-flex w-full items-center justify-center rounded-[10px] bg-[#111827] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Importer
-            </button>
-            {importSuccess ? (
-              <p className="mt-2 text-center text-[11px] font-medium text-emerald-700">
-                {importSuccess.count} employé(s) importé(s)
-              </p>
-            ) : null}
-          </div>
-
-          {/* Card 5: Statut */}
-          <div className="relative rounded-[14px] border border-slate-200 bg-[#fbfbfc] p-4 flex flex-col">
-            <span className="absolute -left-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] font-bold text-slate-700">
-              5
-            </span>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
-              Statut
+              Activation
             </p>
             {status !== "active" ? (
-              <button
-                type="button"
-                onClick={handleActivateStep}
-                disabled={!canActivateCampaign || isPending}
-                className="mt-3 inline-flex w-full items-center justify-center rounded-[10px] bg-[#111827] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Activer
-              </button>
+              <>
+                <p className="mt-3 text-[11px] leading-5 text-slate-500">
+                  Crée et vérifie les questions avant activation.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleActivateStep}
+                  disabled={!canActivateCampaign || isBusy}
+                  className="mt-3 inline-flex w-full items-center justify-center rounded-[10px] bg-[#111827] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Activer
+                </button>
+              </>
             ) : (
               <div className="mt-3 space-y-2">
                 <div className="inline-flex w-full items-center justify-center rounded-[10px] bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
@@ -1164,7 +1420,7 @@ export function SurveyBuilderDemo({
                 <button
                   type="button"
                   onClick={() => changeCampaignStatus("terminateCampaign")}
-                  disabled={isPending}
+                  disabled={isBusy}
                   className="inline-flex w-full items-center justify-center rounded-[10px] border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Désactiver
@@ -1172,20 +1428,46 @@ export function SurveyBuilderDemo({
               </div>
             )}
           </div>
+
+          {/* Card 5: Import */}
+          <div className="relative rounded-[14px] border border-slate-200 bg-[#fbfbfc] p-4 flex flex-col">
+            <span className="absolute -left-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] font-bold text-slate-700">
+              5
+            </span>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+              Import
+            </p>
+            <p className="mt-3 text-[11px] leading-5 text-slate-500">
+              Disponible après activation.
+            </p>
+            <button
+              type="button"
+              onClick={openImportModal}
+              disabled={!isSurveyReadyForImport || isBusy || isPreparingImport}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-[10px] bg-[#111827] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPreparingImport ? "Préparation..." : "Importer"}
+            </button>
+            {hasImportedEmployees ? (
+              <p className="mt-2 text-center text-[11px] font-medium text-emerald-700">
+                {participantCount || importSuccess?.count || 0} employé(s) importé(s)
+              </p>
+            ) : null}
+          </div>
         </div>
       </Card>
 
       {/* Boutons d'action principaux */}
       <div className="flex flex-wrap gap-2 sm:gap-3">
         <PrimaryButton
-          disabled={isPending || !canSaveCampaign || (mode === "edit" && !campaignId)}
+          disabled={isBusy || !canSaveCampaign || (mode === "edit" && !campaignId)}
           onClick={saveCampaign}
           className="sm:w-auto"
         >
-          {isPending ? "Enregistrement..." : campaignId ? "Enregistrer" : "Créer"}
+          {isBusy ? "Enregistrement..." : campaignId ? "Enregistrer" : "Créer"}
         </PrimaryButton>
         {campaignId && (
-          <SecondaryButton disabled={isPending} onClick={() => changeCampaignStatus("archiveCampaign")} className="sm:w-auto">
+          <SecondaryButton disabled={isBusy} onClick={() => changeCampaignStatus("archiveCampaign")} className="sm:w-auto">
             Archiver
           </SecondaryButton>
         )}
@@ -1196,23 +1478,26 @@ export function SurveyBuilderDemo({
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700 mb-3">
           Gestion des questions
         </p>
+        <p className="mb-4 rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+          Finalise les questions avant activation : ce contenu sera celui visible dans le lien envoyé aux employés.
+        </p>
         <div className="flex flex-wrap gap-2 sm:gap-3 mb-4">
           <SecondaryButton 
-            disabled={isPending || !campaignId || status === "active"} 
+            disabled={isBusy || !campaignId || status === "active"} 
             onClick={() => addQuestion("scale")} 
             className="sm:w-auto"
           >
             Ajouter échelle 1-5
           </SecondaryButton>
           <SecondaryButton 
-            disabled={isPending || !campaignId || status === "active"} 
+            disabled={isBusy || !campaignId || status === "active"} 
             onClick={() => addQuestion("choice")} 
             className="sm:w-auto"
           >
             Ajouter QCM
           </SecondaryButton>
           <SecondaryButton 
-            disabled={isPending || !campaignId || status === "active"} 
+            disabled={isBusy || !campaignId || status === "active"} 
             onClick={() => addQuestion("text")} 
             className="sm:w-auto"
           >
@@ -1407,10 +1692,10 @@ export function SurveyBuilderDemo({
                     )}
 
                     <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
-                      <PrimaryButton disabled={isPending || !canEditQuestions} onClick={() => persistQuestion(question, index)} className="w-full sm:w-auto">
+                      <PrimaryButton disabled={isBusy || !canEditQuestions} onClick={() => persistQuestion(question, index)} className="w-full sm:w-auto">
                         Enregistrer la question
                       </PrimaryButton>
-                      <SecondaryButton disabled={isPending || !canEditQuestions} onClick={() => removeQuestion(question)} className="w-full sm:w-auto">
+                      <SecondaryButton disabled={isBusy || !canEditQuestions} onClick={() => removeQuestion(question)} className="w-full sm:w-auto">
                         Supprimer
                       </SecondaryButton>
                     </div>
@@ -1517,9 +1802,9 @@ export function SurveyBuilderDemo({
                 {[
                   {
                     step: 1,
-                    title: "Sondage créé",
-                    body: "Le sondage est prêt et peut maintenant recevoir les employés.",
-                    done: Boolean(campaignId),
+                    title: "Sondage activé",
+                    body: "Les questions sont validées avant l'import et l'envoi des liens.",
+                    done: Boolean(campaignId && status === "active" && questions.length > 0),
                   },
                   {
                     step: 2,
@@ -1529,8 +1814,8 @@ export function SurveyBuilderDemo({
                   },
                   {
                     step: 3,
-                    title: "Télécharger la liste",
-                    body: "Téléchargez la liste des employés avec leurs liens individuels une fois l'import terminé.",
+                    title: "Télécharger les liens",
+                    body: "Téléchargez les liens individuels une fois l'import terminé.",
                     done: hasDownloadedLinks,
                   },
                 ].map((item) => (
@@ -1635,13 +1920,13 @@ export function SurveyBuilderDemo({
 
                 <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
                   <PrimaryButton
-                    disabled={isPending || !importCsv.trim() || importValidationErrors.length > 0}
+                    disabled={isBusy || !importCsv.trim() || importValidationErrors.length > 0}
                     onClick={handleImportEmployees}
                     className="w-full sm:w-auto"
                   >
-                    {isPending ? "Import en cours..." : "Importer les employés"}
+                    {isBusy ? "Import en cours..." : "Importer les employés"}
                   </PrimaryButton>
-                  <SecondaryButton onClick={closeImportModal} disabled={isPending} className="w-full sm:w-auto">
+                  <SecondaryButton onClick={closeImportModal} disabled={isBusy} className="w-full sm:w-auto">
                     Fermer
                   </SecondaryButton>
                 </div>
@@ -1660,7 +1945,7 @@ export function SurveyBuilderDemo({
                   </p>
                   <div className="mt-4 flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
                     <PrimaryButton onClick={downloadLinksList} className="w-full sm:w-auto">
-                      Télécharger la liste
+                      Télécharger les liens
                     </PrimaryButton>
                     <SecondaryButton onClick={copyAllLinks} className="w-full sm:w-auto">Copier tous les liens</SecondaryButton>
                   </div>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
 	isBackendConfigured,
 } from "@/lib/backend/client";
+import { getAppBaseUrl } from "@/lib/api";
 import {
 	deleteServerBackend as deleteBackend,
 	getServerBackendItem as getBackendItem,
@@ -255,6 +256,21 @@ const campaignParticipantsRouter = t.router({
 			return postBackend(`/campaign-participants/campaign/${input.campaignId}/import-employees`, {
 				company_id: input.companyId,
 				csv: input.csv?.trim(),
+			});
+		}),
+
+	sendInvitations: t.procedure
+		.input(
+			z.object({
+				campaignId: z.number().int().positive(),
+				force: z.boolean().optional(),
+			}),
+		)
+		.mutation(async ({ input }) => {
+			ensureBackendConfigured();
+			return postBackend(`/campaign-participants/campaign/${input.campaignId}/send-invitations`, {
+				app_url: getAppBaseUrl(),
+				force: input.force,
 			});
 		}),
 

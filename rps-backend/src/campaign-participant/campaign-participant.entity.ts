@@ -53,6 +53,9 @@ export class CampaignParticipant {
   @Column({ type: 'timestamp', nullable: true })
   reminder_sent_at!: Date | null;
 
+  @Column({ type: 'int', default: 0 })
+  reminder_count!: number;
+
   @Column({ type: 'timestamp', nullable: true })
   completed_at!: Date | null;
 

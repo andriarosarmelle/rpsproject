@@ -28,18 +28,22 @@ export async function POST(request: Request) {
     await persistSession(response);
     return NextResponse.json(response);
   } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : "";
+    const isRateLimited = /429\s+Too Many Requests|too many/i.test(rawMessage);
     const message =
-      error instanceof Error && /401\s+Unauthorized.*Invalid credentials/i.test(error.message)
+      isRateLimited
+        ? "Trop de tentatives de connexion. Réessayez dans quelques minutes."
+        : /401\s+Unauthorized.*Invalid credentials/i.test(rawMessage)
         ? "Identifiants incorrects."
-        : error instanceof Error
-          ? error.message
+        : rawMessage
+          ? rawMessage
           : "Identifiants incorrects.";
 
     return NextResponse.json(
       {
         error: message,
       },
-      { status: 401 },
+      { status: isRateLimited ? 429 : 401 },
     );
   }
 }

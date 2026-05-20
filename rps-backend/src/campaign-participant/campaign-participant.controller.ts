@@ -13,6 +13,7 @@ import { CampaignParticipantService } from './campaign-participant.service';
 import {
   CreateCampaignParticipantDto,
   ImportCampaignEmployeesDto,
+  SendCampaignInvitationsDto,
   SendCampaignRemindersDto,
   SubmitCampaignResponsesDto,
   UpdateCampaignParticipantDto,
@@ -85,6 +86,18 @@ export class CampaignParticipantController {
       campaignId,
       payload,
     );
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('campaign/:campaignId/send-invitations')
+  @ApiBody({ type: SendCampaignInvitationsDto })
+  @ApiResponse({ status: 200, description: 'Invitations envoyees avec succes' })
+  @ApiResponse({ status: 400, description: 'Donnees invalides' })
+  sendInvitations(
+    @Param('campaignId', ParseIntPipe) campaignId: number,
+    @Body() payload: SendCampaignInvitationsDto,
+  ) {
+    return this.campaignParticipantService.sendInvitations(campaignId, payload);
   }
 
   @UseGuards(AuthGuard)

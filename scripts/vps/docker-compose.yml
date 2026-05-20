@@ -22,6 +22,7 @@ services:
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
       SWAGGER_PATH: ${SWAGGER_PATH:-api-docs}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      API_KEY: ${API_KEY:-}
 
       # n8n internal access
       N8N_BASE_URL: ${N8N_BASE_URL:-http://n8n:5678/n8n}
@@ -105,6 +106,17 @@ services:
       DB_POSTGRESDB_DATABASE: ${DB_NAME_N8N:-rps_db}
       DB_POSTGRESDB_USER: ${DB_USER:-rps_user}
       DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD:-rps_pass}
+      BACKEND_API_URL: ${BACKEND_API_URL:-http://backend:3000}
+      API_KEY: ${API_KEY:-}
+      FROM_NAME: ${FROM_NAME:-Laroche 360}
+      FROM_EMAIL: ${FROM_EMAIL:-communications@laroche360.ca}
+      REPLY_TO_EMAIL: ${REPLY_TO_EMAIL:-communications@laroche360.ca}
+      REPORT_RECIPIENT_EMAIL: ${REPORT_RECIPIENT_EMAIL:-abondelire@gmail.com}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      GOOGLE_DRIVE_FOLDER: ${GOOGLE_DRIVE_FOLDER:-RPS Reports}
+      REMINDER_CAMPAIGN_IDS: ${REMINDER_CAMPAIGN_IDS:-}
+      REMINDER_MIN_DAYS: ${REMINDER_MIN_DAYS:-6}
+      REMINDER_MAX_COUNT: ${REMINDER_MAX_COUNT:-2}
     volumes:
       - n8n_data:${N8N_USER_FOLDER:-/home/node/.n8n}
     extra_hosts:

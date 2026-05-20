@@ -103,13 +103,23 @@ export type SurveyBuilderData = {
   campaignId: number | null;
   companyId: number | null;
   companies: { id: number; name: string }[];
-  campaigns: { id: number; name: string; status: string; companyId: number | null }[];
+  campaigns: {
+    id: number;
+    name: string;
+    description: string;
+    status: string;
+    companyId: number | null;
+    startDate: string;
+    endDate: string;
+    questions: SurveyQuestion[];
+  }[];
   title: string;
   description: string;
   status: string;
   startDate: string;
   endDate: string;
   questions: SurveyQuestion[];
+  participantCount: number;
 };
 
 export type ReportTemplateData = {
@@ -269,16 +279,27 @@ export async function getSurveyBuilderData(
       name: company.name,
     }));
 
-    const campaignOptions = campaigns.map((campaign) => ({
-      id: campaign.id,
-      name: campaign.name,
-      status: mapCampaignStatus(campaign.status),
-      companyId: campaign.company?.id ?? null,
-    }));
+    const campaignOptions = campaigns.map((campaign) => {
+      const mappedCampaign = mapBackendCampaign(campaign);
+
+      return {
+        id: campaign.id,
+        name: mappedCampaign.title,
+        description: mappedCampaign.description,
+        status: mappedCampaign.status,
+        companyId: campaign.company?.id ?? null,
+        startDate: mappedCampaign.startDate ?? "",
+        endDate: mappedCampaign.endDate ?? "",
+        questions: mappedCampaign.questions,
+      };
+    });
 
     if (activeCampaign) {
       const mappedCampaign = mapBackendCampaign(activeCampaign);
       const activeCompanyId = activeCampaign.company?.id ?? null;
+      const progress = await getBackendItem<BackendCampaignProgress>(
+        `/campaign-participants/campaign/${activeCampaign.id}/progress`,
+      ).catch(() => null);
 
       return {
         campaignId: activeCampaign.id,
@@ -291,6 +312,7 @@ export async function getSurveyBuilderData(
         startDate: mappedCampaign.startDate ?? "",
         endDate: mappedCampaign.endDate ?? "",
         questions: mappedCampaign.questions,
+        participantCount: progress?.total_participants ?? 0,
       };
     }
 
@@ -305,6 +327,7 @@ export async function getSurveyBuilderData(
       startDate: "",
       endDate: "",
       questions: [],
+      participantCount: 0,
     };
   } catch (error) {
     throw toRepositoryError("Impossible de charger le builder de sondage.", error);

@@ -185,3 +185,44 @@ export class SendCampaignRemindersDto {
   @IsBoolean()
   force?: boolean;
 }
+
+export class SendCampaignInvitationsDto {
+  @ApiProperty({
+    description: "URL publique de l'application utilisee dans les liens",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  app_url?: string;
+
+  @ApiProperty({
+    description: 'Forcer le renvoi aux participants deja invites',
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
+}
+
+export class MarkParticipantReminderDto {
+  @ApiProperty({ description: "Date d'envoi du rappel", required: false })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  reminder_sent_at?: Date;
+
+  @ApiProperty({
+    description: 'Nombre total de rappels envoyes',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reminder_count?: number;
+
+  @ApiProperty({ description: 'Statut participant', required: false })
+  @IsOptional()
+  @IsString()
+  status?: string;
+}

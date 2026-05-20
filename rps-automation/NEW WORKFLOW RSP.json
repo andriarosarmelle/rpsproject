@@ -1,0 +1,710 @@
+﻿{
+    "name":  "NEW WORKFLOW RSP",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "content":  "Backend = source de vérité. n8n = IA, DOCX, Drive, email et callbacks. Aucune donnée simulée dans ce workflow.",
+                                         "height":  180,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "id":  "note-architecture",
+                      "name":  "Note - Architecture SaaS RPS",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       "-1240",
+                                       "-260"
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "sondage-rps-solutions-tech",
+                                         "responseMode":  "onReceived",
+                                         "options":  {
+                                                         "responseCode":  202,
+                                                         "responseData":  "Analyse RPS reçue par n8n"
+                                                     }
+                                     },
+                      "id":  "webhook-analysis",
+                      "name":  "Webhook - Analyse RPS",
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2.1,
+                      "position":  [
+                                       "-1180",
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const raw = $json.body ?? $json;\nconst legacyBody = raw.body \u0026\u0026 typeof raw.body === \u0027object\u0027 ? raw.body : {};\nconst responsesFromLegacy = Array.isArray(legacyBody.body) ? legacyBody.body : [];\n\nconst payload = {\n  campaign_id: raw.campaign_id ?? legacyBody.campaign_id,\n  campaign_name: raw.campaign_name ?? legacyBody.campaign_name ?? \u0027\u0027,\n  company_name: raw.company_name ?? legacyBody.company_name ?? \u0027\u0027,\n  client_email: raw.client_email ?? legacyBody.client_email ?? raw.user_email ?? legacyBody.user_email ?? \u0027\u0027,\n  participants_count: Number(raw.participants_count ?? legacyBody.participants_count ?? raw.total_participants ?? legacyBody.total_participants ?? 0),\n  responses_count: Number(raw.responses_count ?? legacyBody.responses_count ?? 0),\n  participation_rate: Number(raw.participation_rate ?? legacyBody.participation_rate ?? 0),\n  questions: Array.isArray(raw.questions) ? raw.questions : Array.isArray(legacyBody.questions) ? legacyBody.questions : [],\n  responses: Array.isArray(raw.responses) ? raw.responses : Array.isArray(legacyBody.responses) ? legacyBody.responses : responsesFromLegacy,\n  dimensions: Array.isArray(raw.dimensions) ? raw.dimensions : Array.isArray(legacyBody.dimensions) ? legacyBody.dimensions : []\n};\n\npayload.campaign_id = Number(payload.campaign_id);\npayload.campaign_name = String(payload.campaign_name || `Campagne ${payload.campaign_id || \u0027\u0027}`).trim();\npayload.company_name = String(payload.company_name || \u0027Entreprise\u0027).trim();\npayload.client_email = String(process.env.REPORT_RECIPIENT_EMAIL || payload.client_email || \u0027\u0027).trim();\npayload.responses_count = payload.responses_count || payload.responses.length;\npayload.participants_count = payload.participants_count || payload.responses_count;\npayload.participation_rate = payload.participation_rate || (payload.participants_count ? Number(((payload.responses_count / payload.participants_count) * 100).toFixed(2)) : 0);\n\nconst missing = [];\nif (!payload.campaign_id) missing.push(\u0027campaign_id\u0027);\nif (!payload.responses.length) missing.push(\u0027responses\u0027);\nif (!payload.client_email) missing.push(\u0027REPORT_RECIPIENT_EMAIL ou client_email\u0027);\nif (!process.env.BACKEND_API_URL) missing.push(\u0027BACKEND_API_URL\u0027);\nif (!process.env.API_KEY) missing.push(\u0027API_KEY\u0027);\nif (!process.env.FROM_EMAIL) missing.push(\u0027FROM_EMAIL\u0027);\n\nif (missing.length) {\n  throw new Error(`Payload/configuration n8n invalide: ${missing.join(\u0027, \u0027)}`);\n}\n\nreturn [{\n  json: {\n    ...payload,\n    report_recipient_email: payload.client_email,\n    from_name: process.env.FROM_NAME || \u0027Laroche 360\u0027,\n    from_email: process.env.FROM_EMAIL,\n    reply_to: process.env.REPLY_TO_EMAIL || process.env.FROM_EMAIL,\n    drive_root_folder_name: process.env.GOOGLE_DRIVE_FOLDER || \u0027RPS Reports\u0027,\n    received_at: new Date().toISOString()\n  }\n}];"
+                                     },
+                      "id":  "normalize-analysis",
+                      "name":  "Normaliser payload analyse",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       "-920",
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const payload = $input.first().json;\n\nfunction asNumber(value) {\n  const number = Number(value);\n  return Number.isFinite(number) ? number : null;\n}\n\nfunction isLikert(value) {\n  const number = asNumber(value);\n  return number !== null \u0026\u0026 number \u003e= 1 \u0026\u0026 number \u003c= 5;\n}\n\nconst questionStats = new Map();\nconst openAnswers = [];\n\nfor (const row of payload.responses) {\n  for (const [key, value] of Object.entries(row ?? {})) {\n    if (!/^Q\\d+$/i.test(key)) continue;\n    const rawValue = value == null ? \u0027\u0027 : String(value).trim();\n    if (!rawValue) continue;\n\n    if (!questionStats.has(key)) {\n      questionStats.set(key, { question: key, count: 0, sum: 0, values: {}, average: null });\n    }\n\n    const stat = questionStats.get(key);\n    if (isLikert(rawValue)) {\n      const score = Number(rawValue);\n      stat.count += 1;\n      stat.sum += score;\n      stat.values[score] = (stat.values[score] ?? 0) + 1;\n      stat.average = Number((stat.sum / stat.count).toFixed(2));\n    } else if (rawValue.length \u003e 2) {\n      openAnswers.push({ question: key, answer: rawValue });\n    }\n  }\n}\n\nconst quantitative_stats = Array.from(questionStats.values()).sort((left, right) =\u003e {\n  const leftIndex = Number(left.question.replace(/\\D/g, \u0027\u0027));\n  const rightIndex = Number(right.question.replace(/\\D/g, \u0027\u0027));\n  return leftIndex - rightIndex;\n});\n\nconst aiContext = {\n  campaign: {\n    campaign_id: payload.campaign_id,\n    company_name: payload.company_name,\n    campaign_name: payload.campaign_name,\n    participants_count: payload.participants_count,\n    responses_count: payload.responses_count,\n    participation_rate: payload.participation_rate\n  },\n  questions: payload.questions,\n  dimensions: payload.dimensions,\n  quantitative_stats,\n  open_answers: openAnswers.slice(0, 200),\n  responses: payload.responses\n};\n\nreturn [{\n  json: {\n    ...payload,\n    quantitative_stats,\n    open_answers: openAnswers,\n    ai_context: JSON.stringify(aiContext, null, 2)\n  }\n}];"
+                                     },
+                      "id":  "prepare-ai",
+                      "name":  "Préparer contexte IA",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       "-660",
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "=Analyse les résultats RPS réels ci-dessous. Tu dois impérativement utiliser les réponses dans responses, les questions, dimensions, statistiques quantitatives et réponses ouvertes.\n\nDATASET_JSON:\n{{ $json.ai_context }}\n\nRetourne uniquement un JSON valide, sans Markdown, avec ce schéma exact :\n{\n  \"executive_summary\": \"...\",\n  \"global_risk_level\": \"low|moderate|high|critical\",\n  \"categories\": [\n    {\n      \"name\": \"Charge de travail|Autonomie|Reconnaissance|Soutien|Equilibre|Organisation|Demandes émotionnelles\",\n      \"score\": 0,\n      \"risk_level\": \"low|moderate|high|critical\",\n      \"analysis\": \"...\",\n      \"risk_factors\": [\"...\"],\n      \"protective_factors\": [\"...\"],\n      \"recommendations\": [\"...\"]\n    }\n  ],\n  \"recommendations\": [\"...\"],\n  \"hr_actions\": [\"...\"],\n  \"open_answers_summary\": \"...\"\n}",
+                                         "options":  {
+                                                         "systemMessage":  "Tu es un expert senior en psychologie du travail et prévention des risques psychosociaux. Tu produis une analyse professionnelle, exploitable par une direction RH, basée uniquement sur les données fournies. Tu signales les limites si les données sont insuffisantes. Aucun Markdown. JSON strict uniquement."
+                                                     }
+                                     },
+                      "id":  "ai-agent",
+                      "name":  "Analyse IA RPS",
+                      "type":  "@n8n/n8n-nodes-langchain.agent",
+                      "typeVersion":  3.1,
+                      "position":  [
+                                       "-380",
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  "mistral-large-latest",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "mistral-model",
+                      "name":  "Mistral Cloud Chat Model",
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+                      "typeVersion":  1,
+                      "position":  [
+                                       "-440",
+                                       260
+                                   ],
+                      "credentials":  {
+                                          "mistralCloudApi":  {
+                                                                  "id":  "Y0rfVxWOlowuCOem",
+                                                                  "name":  "Mistral Cloud account"
+                                                              }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const payload = $(\u0027Préparer contexte IA\u0027).first().json;\nconst aiRaw = $input.first().json.output || $input.first().json.text || $input.first().json.response || Object.values($input.first().json)[0] || \u0027\u0027;\n\nfunction extractJson(value) {\n  if (typeof value === \u0027object\u0027 \u0026\u0026 value !== null) return value;\n  const text = String(value || \u0027\u0027).trim();\n  try { return JSON.parse(text); } catch {}\n  const start = text.indexOf(\u0027{\u0027);\n  const end = text.lastIndexOf(\u0027}\u0027);\n  if (start \u003e= 0 \u0026\u0026 end \u003e start) {\n    try { return JSON.parse(text.slice(start, end + 1)); } catch {}\n  }\n  return {\n    executive_summary: text || \u0027Analyse indisponible.\u0027,\n    global_risk_level: \u0027unknown\u0027,\n    categories: [],\n    recommendations: [],\n    hr_actions: [],\n    open_answers_summary: \u0027\u0027\n  };\n}\n\nconst analysis = extractJson(aiRaw);\nconst now = new Date();\nconst isoDate = now.toISOString().slice(0, 10);\n\nfunction sanitizeFilePart(value) {\n  return String(value || \u0027Entreprise\u0027)\n    .normalize(\u0027NFD\u0027)\n    .replace(/[\\u0300-\\u036f]/g, \u0027\u0027)\n    .replace(/[^a-zA-Z0-9]+/g, \u0027_\u0027)\n    .replace(/^_+|_+$/g, \u0027\u0027)\n    .slice(0, 80) || \u0027Entreprise\u0027;\n}\n\nconst fileName = `Rapport_RPS_${sanitizeFilePart(payload.company_name)}_${isoDate}.docx`;\nconst drivePath = `${payload.drive_root_folder_name}/${payload.company_name}/${payload.campaign_name}`;\n\nfunction escapeXml(value) {\n  return String(value ?? \u0027\u0027)\n    .replace(/\u0026/g, \u0027\u0026amp;\u0027)\n    .replace(/\u003c/g, \u0027\u0026lt;\u0027)\n    .replace(/\u003e/g, \u0027\u0026gt;\u0027)\n    .replace(/\"/g, \u0027\u0026quot;\u0027)\n    .replace(/\u0027/g, \u0027\u0026apos;\u0027);\n}\n\nfunction paragraph(text, style = \u0027\u0027) {\n  const styleXml = style ? `\u003cw:pPr\u003e\u003cw:pStyle w:val=\"${style}\"/\u003e\u003c/w:pPr\u003e` : \u0027\u0027;\n  return `\u003cw:p\u003e${styleXml}\u003cw:r\u003e\u003cw:t xml:space=\"preserve\"\u003e${escapeXml(text)}\u003c/w:t\u003e\u003c/w:r\u003e\u003c/w:p\u003e`;\n}\n\nfunction list(items) {\n  return (items || []).filter(Boolean).map((item) =\u003e paragraph(`- ${item}`)).join(\u0027\u0027);\n}\n\nconst categories = Array.isArray(analysis.categories) ? analysis.categories : [];\nconst recommendations = Array.isArray(analysis.recommendations) ? analysis.recommendations : [];\nconst hrActions = Array.isArray(analysis.hr_actions) ? analysis.hr_actions : [];\n\nlet body = \u0027\u0027;\nbody += paragraph(\u0027Rapport d’analyse RPS\u0027, \u0027Title\u0027);\nbody += paragraph(`Entreprise : ${payload.company_name}`);\nbody += paragraph(`Campagne : ${payload.campaign_name}`);\nbody += paragraph(`Date : ${isoDate}`);\nbody += paragraph(`Participants : ${payload.participants_count}`);\nbody += paragraph(`Répondants : ${payload.responses_count}`);\nbody += paragraph(`Taux de participation : ${payload.participation_rate}%`);\nbody += paragraph(\u0027\u0027);\nbody += paragraph(\u0027Résumé exécutif\u0027, \u0027Heading1\u0027);\nbody += paragraph(analysis.executive_summary || \u0027Résumé non fourni par l’IA.\u0027);\nbody += paragraph(`Niveau de risque global : ${analysis.global_risk_level || \u0027non renseigné\u0027}`);\nbody += paragraph(\u0027\u0027);\nbody += paragraph(\u0027Analyse détaillée par catégorie\u0027, \u0027Heading1\u0027);\n\nif (categories.length) {\n  for (const category of categories) {\n    body += paragraph(category.name || \u0027Catégorie RPS\u0027, \u0027Heading2\u0027);\n    if (category.score !== undefined \u0026\u0026 category.score !== null) body += paragraph(`Score : ${category.score}`);\n    if (category.risk_level) body += paragraph(`Niveau de risque : ${category.risk_level}`);\n    body += paragraph(category.analysis || \u0027Analyse non renseignée.\u0027);\n    if (category.risk_factors?.length) {\n      body += paragraph(\u0027Facteurs de risque\u0027, \u0027Heading3\u0027);\n      body += list(category.risk_factors);\n    }\n    if (category.protective_factors?.length) {\n      body += paragraph(\u0027Facteurs protecteurs\u0027, \u0027Heading3\u0027);\n      body += list(category.protective_factors);\n    }\n    if (category.recommendations?.length) {\n      body += paragraph(\u0027Recommandations spécifiques\u0027, \u0027Heading3\u0027);\n      body += list(category.recommendations);\n    }\n  }\n} else {\n  body += paragraph(\u0027Aucune catégorie structurée n’a été retournée par l’IA.\u0027);\n}\n\nbody += paragraph(\u0027\u0027);\nbody += paragraph(\u0027Réponses ouvertes\u0027, \u0027Heading1\u0027);\nbody += paragraph(analysis.open_answers_summary || \u0027Aucune synthèse spécifique des réponses ouvertes.\u0027);\nbody += paragraph(\u0027\u0027);\nbody += paragraph(\u0027Recommandations RH\u0027, \u0027Heading1\u0027);\nbody += list(recommendations);\nbody += paragraph(\u0027\u0027);\nbody += paragraph(\u0027Plan d’action proposé\u0027, \u0027Heading1\u0027);\nbody += list(hrActions);\nbody += paragraph(\u0027\u0027);\nbody += paragraph(\u0027Confidentiel – Usage interne uniquement\u0027);\n\nconst documentXml = `\u003c?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?\u003e\u003cw:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"\u003e\u003cw:body\u003e${body}\u003cw:sectPr\u003e\u003cw:pgSz w:w=\"11906\" w:h=\"16838\"/\u003e\u003cw:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"/\u003e\u003c/w:sectPr\u003e\u003c/w:body\u003e\u003c/w:document\u003e`;\n\nconst contentTypes = `\u003c?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?\u003e\u003cTypes xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"\u003e\u003cDefault Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/\u003e\u003cDefault Extension=\"xml\" ContentType=\"application/xml\"/\u003e\u003cOverride PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/\u003e\u003cOverride PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/\u003e\u003cOverride PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/\u003e\u003cOverride PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/\u003e\u003c/Types\u003e`;\nconst rels = `\u003c?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?\u003e\u003cRelationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"\u003e\u003cRelationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/\u003e\u003cRelationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/\u003e\u003cRelationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/\u003e\u003c/Relationships\u003e`;\nconst wordRels = `\u003c?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?\u003e\u003cRelationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"/\u003e`;\nconst styles = `\u003c?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?\u003e\u003cw:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"\u003e\u003cw:style w:type=\"paragraph\" w:styleId=\"Title\"\u003e\u003cw:name w:val=\"Title\"/\u003e\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:sz w:val=\"40\"/\u003e\u003c/w:rPr\u003e\u003c/w:style\u003e\u003cw:style w:type=\"paragraph\" w:styleId=\"Heading1\"\u003e\u003cw:name w:val=\"heading 1\"/\u003e\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:sz w:val=\"28\"/\u003e\u003c/w:rPr\u003e\u003c/w:style\u003e\u003cw:style w:type=\"paragraph\" w:styleId=\"Heading2\"\u003e\u003cw:name w:val=\"heading 2\"/\u003e\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:sz w:val=\"24\"/\u003e\u003c/w:rPr\u003e\u003c/w:style\u003e\u003cw:style w:type=\"paragraph\" w:styleId=\"Heading3\"\u003e\u003cw:name w:val=\"heading 3\"/\u003e\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:sz w:val=\"21\"/\u003e\u003c/w:rPr\u003e\u003c/w:style\u003e\u003c/w:styles\u003e`;\nconst core = `\u003c?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?\u003e\u003ccp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:dcmitype=\"http://purl.org/dc/dcmitype/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\u003e\u003cdc:title\u003e${escapeXml(`Rapport RPS - ${payload.company_name}`)}\u003c/dc:title\u003e\u003cdc:creator\u003eLaroche 360\u003c/dc:creator\u003e\u003ccp:lastModifiedBy\u003en8n\u003c/cp:lastModifiedBy\u003e\u003cdcterms:created xsi:type=\"dcterms:W3CDTF\"\u003e${now.toISOString()}\u003c/dcterms:created\u003e\u003cdcterms:modified xsi:type=\"dcterms:W3CDTF\"\u003e${now.toISOString()}\u003c/dcterms:modified\u003e\u003c/cp:coreProperties\u003e`;\nconst app = `\u003c?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?\u003e\u003cProperties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\"\u003e\u003cApplication\u003en8n\u003c/Application\u003e\u003c/Properties\u003e`;\n\nfunction crc32(buffer) {\n  let table = crc32.table;\n  if (!table) {\n    table = crc32.table = Array.from({ length: 256 }, (_, n) =\u003e {\n      let c = n;\n      for (let k = 0; k \u003c 8; k++) c = c \u0026 1 ? 0xedb88320 ^ (c \u003e\u003e\u003e 1) : c \u003e\u003e\u003e 1;\n      return c \u003e\u003e\u003e 0;\n    });\n  }\n  let crc = 0xffffffff;\n  for (const byte of buffer) crc = table[(crc ^ byte) \u0026 0xff] ^ (crc \u003e\u003e\u003e 8);\n  return (crc ^ 0xffffffff) \u003e\u003e\u003e 0;\n}\n\nfunction dosDateTime(date) {\n  const time = (date.getHours() \u003c\u003c 11) | (date.getMinutes() \u003c\u003c 5) | Math.floor(date.getSeconds() / 2);\n  const day = date.getDate();\n  const month = date.getMonth() + 1;\n  const year = Math.max(date.getFullYear() - 1980, 0);\n  return { time, date: (year \u003c\u003c 9) | (month \u003c\u003c 5) | day };\n}\n\nfunction u16(value) { const b = Buffer.alloc(2); b.writeUInt16LE(value); return b; }\nfunction u32(value) { const b = Buffer.alloc(4); b.writeUInt32LE(value \u003e\u003e\u003e 0); return b; }\n\nfunction zip(files) {\n  const localParts = [];\n  const centralParts = [];\n  let offset = 0;\n  const dt = dosDateTime(now);\n\n  for (const file of files) {\n    const name = Buffer.from(file.name, \u0027utf8\u0027);\n    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data, \u0027utf8\u0027);\n    const crc = crc32(data);\n    const localHeader = Buffer.concat([\n      u32(0x04034b50), u16(20), u16(0), u16(0), u16(dt.time), u16(dt.date), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), name\n    ]);\n    localParts.push(localHeader, data);\n\n    const centralHeader = Buffer.concat([\n      u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(dt.time), u16(dt.date), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), name\n    ]);\n    centralParts.push(centralHeader);\n    offset += localHeader.length + data.length;\n  }\n\n  const centralSize = centralParts.reduce((sum, part) =\u003e sum + part.length, 0);\n  const end = Buffer.concat([\n    u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(centralSize), u32(offset), u16(0)\n  ]);\n\n  return Buffer.concat([...localParts, ...centralParts, end]);\n}\n\nconst docx = zip([\n  { name: \u0027[Content_Types].xml\u0027, data: contentTypes },\n  { name: \u0027_rels/.rels\u0027, data: rels },\n  { name: \u0027word/document.xml\u0027, data: documentXml },\n  { name: \u0027word/_rels/document.xml.rels\u0027, data: wordRels },\n  { name: \u0027word/styles.xml\u0027, data: styles },\n  { name: \u0027docProps/core.xml\u0027, data: core },\n  { name: \u0027docProps/app.xml\u0027, data: app }\n]);\n\nconst binary = await this.helpers.prepareBinaryData(\n  docx,\n  fileName,\n  \u0027application/vnd.openxmlformats-officedocument.wordprocessingml.document\u0027\n);\n\nreturn [{\n  json: {\n    ...payload,\n    ai_analysis: analysis,\n    file_name: fileName,\n    drive_path: drivePath,\n    generated_at: now.toISOString()\n  },\n  binary: { data: binary }\n}];"
+                                     },
+                      "id":  "docx",
+                      "name":  "Générer DOCX réel",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       "-80",
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "folder",
+                                         "name":  "={{ $json.drive_root_folder_name }}",
+                                         "driveId":  {
+                                                         "__rl":  true,
+                                                         "mode":  "list",
+                                                         "value":  "My Drive"
+                                                     },
+                                         "folderId":  {
+                                                          "__rl":  true,
+                                                          "mode":  "list",
+                                                          "value":  "root",
+                                                          "cachedResultName":  "/ (Root folder)"
+                                                      },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "drive-root-folder",
+                      "name":  "Drive - Créer dossier racine",
+                      "type":  "n8n-nodes-base.googleDrive",
+                      "typeVersion":  3,
+                      "position":  [
+                                       180,
+                                       20
+                                   ],
+                      "credentials":  {
+                                          "googleDriveOAuth2Api":  {
+                                                                       "id":  "6DA5X6C0c9NRlrLH",
+                                                                       "name":  "Google Drive account"
+                                                                   }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "folder",
+                                         "name":  "={{ $json.company_name }}",
+                                         "driveId":  {
+                                                         "__rl":  true,
+                                                         "mode":  "list",
+                                                         "value":  "My Drive"
+                                                     },
+                                         "folderId":  {
+                                                          "__rl":  true,
+                                                          "mode":  "id",
+                                                          "value":  "={{ $json.id }}"
+                                                      },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "drive-company-folder",
+                      "name":  "Drive - Créer dossier entreprise",
+                      "type":  "n8n-nodes-base.googleDrive",
+                      "typeVersion":  3,
+                      "position":  [
+                                       440,
+                                       20
+                                   ],
+                      "credentials":  {
+                                          "googleDriveOAuth2Api":  {
+                                                                       "id":  "6DA5X6C0c9NRlrLH",
+                                                                       "name":  "Google Drive account"
+                                                                   }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "folder",
+                                         "name":  "={{ $(\"Générer DOCX réel\").first().json.campaign_name }}",
+                                         "driveId":  {
+                                                         "__rl":  true,
+                                                         "mode":  "list",
+                                                         "value":  "My Drive"
+                                                     },
+                                         "folderId":  {
+                                                          "__rl":  true,
+                                                          "mode":  "id",
+                                                          "value":  "={{ $json.id }}"
+                                                      },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "drive-campaign-folder",
+                      "name":  "Drive - Créer dossier campagne",
+                      "type":  "n8n-nodes-base.googleDrive",
+                      "typeVersion":  3,
+                      "position":  [
+                                       700,
+                                       20
+                                   ],
+                      "credentials":  {
+                                          "googleDriveOAuth2Api":  {
+                                                                       "id":  "6DA5X6C0c9NRlrLH",
+                                                                       "name":  "Google Drive account"
+                                                                   }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const report = $(\u0027Générer DOCX réel\u0027).first();\nconst campaignFolder = $input.first().json;\nreturn [{\n  json: {\n    ...report.json,\n    drive_folder_id: campaignFolder.id,\n    drive_folder_name: campaignFolder.name\n  },\n  binary: report.binary\n}];"
+                                     },
+                      "id":  "reattach",
+                      "name":  "Réattacher DOCX",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       960,
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "upload",
+                                         "binaryData":  true,
+                                         "inputDataFieldName":  "data",
+                                         "name":  "={{ $json.file_name }}",
+                                         "driveId":  {
+                                                         "__rl":  true,
+                                                         "mode":  "list",
+                                                         "value":  "My Drive"
+                                                     },
+                                         "folderId":  {
+                                                          "__rl":  true,
+                                                          "mode":  "id",
+                                                          "value":  "={{ $json.drive_folder_id }}"
+                                                      },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "drive-upload",
+                      "name":  "Drive - Upload DOCX",
+                      "type":  "n8n-nodes-base.googleDrive",
+                      "typeVersion":  3,
+                      "position":  [
+                                       1220,
+                                       20
+                                   ],
+                      "credentials":  {
+                                          "googleDriveOAuth2Api":  {
+                                                                       "id":  "6DA5X6C0c9NRlrLH",
+                                                                       "name":  "Google Drive account"
+                                                                   }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const report = $(\u0027Réattacher DOCX\u0027).first();\nconst upload = $input.first().json;\nconst fileId = upload.id || upload.fileId;\nconst driveUrl = upload.webViewLink || upload.webContentLink || (fileId ? `https://drive.google.com/file/d/${fileId}/view` : \u0027\u0027);\n\nif (!driveUrl) {\n  throw new Error(\u0027Google Drive n’a pas retourné de lien exploitable pour le rapport.\u0027);\n}\n\nreturn [{\n  json: {\n    ...report.json,\n    drive_file_id: fileId,\n    drive_web_url: driveUrl,\n    email_to: process.env.REPORT_RECIPIENT_EMAIL || report.json.client_email,\n    email_from: process.env.FROM_EMAIL,\n    email_reply_to: process.env.REPLY_TO_EMAIL || process.env.FROM_EMAIL,\n    email_from_name: process.env.FROM_NAME || \u0027Laroche 360\u0027\n  },\n  binary: report.binary\n}];"
+                                     },
+                      "id":  "prepare-email-callback",
+                      "name":  "Préparer email et callback",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1480,
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "fromEmail":  "={{ $json.email_from_name + \" \u003c\" + $json.email_from + \"\u003e\" }}",
+                                         "toEmail":  "={{ $json.email_to }}",
+                                         "subject":  "={{ \"Rapport RPS - \" + $json.company_name + \" - \" + $json.campaign_name }}",
+                                         "html":  "=Bonjour,\u003cbr\u003e\u003cbr\u003eLe rapport RPS pour \u003cstrong\u003e{{ $json.company_name }}\u003c/strong\u003e / \u003cstrong\u003e{{ $json.campaign_name }}\u003c/strong\u003e est joint à ce message.\u003cbr\u003e\u003cbr\u003eCordialement,\u003cbr\u003eLaroche 360",
+                                         "options":  {
+                                                         "attachments":  "data",
+                                                         "replyTo":  "={{ $json.email_reply_to }}"
+                                                     }
+                                     },
+                      "id":  "email-report",
+                      "name":  "Email - Envoyer rapport",
+                      "type":  "n8n-nodes-base.emailSend",
+                      "typeVersion":  2.1,
+                      "position":  [
+                                       1740,
+                                       20
+                                   ],
+                      "credentials":  {
+                                          "smtp":  {
+                                                       "id":  "cXE7lBmRMBj2OJwl",
+                                                       "name":  "SMTP account"
+                                                   }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "={{ $env.BACKEND_API_URL + \"/reports\" }}",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "x-api-key",
+                                                                                         "value":  "={{ $env.API_KEY }}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "content-type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "contentType":  "json",
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ { campaign_id: $(\"Préparer email et callback\").first().json.campaign_id, report_path: $(\"Préparer email et callback\").first().json.drive_web_url } }}",
+                                         "options":  {
+                                                         "timeout":  30000
+                                                     }
+                                     },
+                      "id":  "callback-report",
+                      "name":  "Callback backend - Enregistrer rapport",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       2000,
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const report = $(\u0027Préparer email et callback\u0027).first().json;\nconsole.log(JSON.stringify({\n  event: \u0027rps_report_completed\u0027,\n  campaign_id: report.campaign_id,\n  company_name: report.company_name,\n  campaign_name: report.campaign_name,\n  report_path: report.drive_web_url,\n  recipient: report.email_to,\n  timestamp: new Date().toISOString()\n}));\nreturn [{ json: { success: true, campaign_id: report.campaign_id, report_path: report.drive_web_url } }];"
+                                     },
+                      "id":  "success-log",
+                      "name":  "Log - Rapport terminé",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2260,
+                                       20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "Relances sans données simulées. Configurer REMINDER_CAMPAIGN_IDS ou remplacer par un endpoint backend listant les campagnes à relancer.",
+                                         "height":  180,
+                                         "width":  520,
+                                         "color":  5
+                                     },
+                      "id":  "note-reminders",
+                      "name":  "Note - Relances production",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       "-1240",
+                                       440
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "triggerAtHour":  8
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "id":  "schedule-reminders",
+                      "name":  "Déclencheur relances quotidiennes",
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       "-1180",
+                                       720
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const raw = process.env.REMINDER_CAMPAIGN_IDS || \u0027\u0027;\nconst campaignIds = raw\n  .split(\u0027,\u0027)\n  .map((value) =\u003e Number(value.trim()))\n  .filter((value) =\u003e Number.isInteger(value) \u0026\u0026 value \u003e 0);\n\nif (!process.env.BACKEND_API_URL) throw new Error(\u0027BACKEND_API_URL est requis pour les relances.\u0027);\nif (!process.env.API_KEY) throw new Error(\u0027API_KEY est requis pour les relances.\u0027);\nif (!process.env.FROM_EMAIL) throw new Error(\u0027FROM_EMAIL est requis pour les relances.\u0027);\nif (!campaignIds.length) throw new Error(\u0027REMINDER_CAMPAIGN_IDS doit contenir au moins une campagne.\u0027);\n\nreturn campaignIds.map((campaign_id) =\u003e ({ json: { campaign_id } }));"
+                                     },
+                      "id":  "prepare-reminder-campaigns",
+                      "name":  "Préparer campagnes relance",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       "-920",
+                                       720
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "GET",
+                                         "url":  "={{ $env.BACKEND_API_URL + \"/campaigns/\" + $json.campaign_id + \"/pending-reminders\" }}",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "x-api-key",
+                                                                                         "value":  "={{ $env.API_KEY }}"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+                                                         "timeout":  30000
+                                                     }
+                                     },
+                      "id":  "fetch-pending",
+                      "name":  "Backend - Participants à relancer",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       "-660",
+                                       720
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const minimumDays = Number(process.env.REMINDER_MIN_DAYS || 6);\nconst maxReminderCount = Number(process.env.REMINDER_MAX_COUNT || 2);\nconst now = new Date();\nconst result = [];\n\nfunction daysSince(value) {\n  if (!value) return null;\n  const date = new Date(value);\n  if (Number.isNaN(date.getTime())) return null;\n  return Math.floor((now.getTime() - date.getTime()) / (24 * 60 * 60 * 1000));\n}\n\nfor (const item of $input.all()) {\n  const payload = item.json;\n  const participants = Array.isArray(payload)\n    ? payload\n    : Array.isArray(payload.participants)\n      ? payload.participants\n      : Array.isArray(payload.pending_reminders)\n        ? payload.pending_reminders\n        : [];\n\n  for (const participant of participants) {\n    const status = String(participant.status || participant.statut || \u0027\u0027).toLowerCase();\n    const reminderCount = Number(participant.reminder_count || 0);\n    const days = daysSince(participant.invitation_sent_at);\n    const reminderAlreadyToday = daysSince(participant.reminder_sent_at) === 0;\n\n    if (!participant.email) continue;\n    if (status === \u0027completed\u0027 || status === \u0027complete\u0027) continue;\n    if (days === null || days \u003c minimumDays) continue;\n    if (reminderCount \u003e= maxReminderCount) continue;\n    if (reminderAlreadyToday) continue;\n\n    result.push({\n      json: {\n        participant_id: participant.participant_id || participant.id,\n        campaign_id: participant.campaign_id || payload.campaign_id,\n        nom: participant.nom || participant.name || participant.full_name || participant.email,\n        email: participant.email,\n        survey_url: participant.survey_url,\n        invitation_sent_at: participant.invitation_sent_at,\n        reminder_sent_at: participant.reminder_sent_at || null,\n        reminder_count: reminderCount,\n        jours_depuis_invitation: days,\n        from_email: process.env.FROM_EMAIL,\n        reply_to: process.env.REPLY_TO_EMAIL || process.env.FROM_EMAIL,\n        from_name: process.env.FROM_NAME || \u0027Laroche 360\u0027\n      }\n    });\n  }\n}\n\nreturn result;"
+                                     },
+                      "id":  "filter-reminders",
+                      "name":  "Filtrer relances éligibles",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       "-380",
+                                       720
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "fromEmail":  "={{ $json.from_name + \" \u003c\" + $json.from_email + \"\u003e\" }}",
+                                         "toEmail":  "={{ $json.email }}",
+                                         "subject":  "Sondage RPS - rappel",
+                                         "html":  "=Bonjour {{ $json.nom }},\u003cbr\u003e\u003cbr\u003eVotre participation au sondage RPS est toujours attendue.\u003cbr\u003e\u003cbr\u003eLien du sondage : \u003ca href=\"{{ $json.survey_url }}\"\u003e{{ $json.survey_url }}\u003c/a\u003e\u003cbr\u003e\u003cbr\u003eMerci,\u003cbr\u003eLaroche 360",
+                                         "options":  {
+                                                         "replyTo":  "={{ $json.reply_to }}"
+                                                     }
+                                     },
+                      "id":  "email-reminder",
+                      "name":  "Email - Envoyer relance",
+                      "type":  "n8n-nodes-base.emailSend",
+                      "typeVersion":  2.1,
+                      "position":  [
+                                       "-100",
+                                       720
+                                   ],
+                      "credentials":  {
+                                          "smtp":  {
+                                                       "id":  "cXE7lBmRMBj2OJwl",
+                                                       "name":  "SMTP account"
+                                                   }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "PATCH",
+                                         "url":  "={{ $env.BACKEND_API_URL + \"/participants/\" + $json.participant_id + \"/reminder\" }}",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "x-api-key",
+                                                                                         "value":  "={{ $env.API_KEY }}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "content-type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "contentType":  "json",
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ { reminder_sent_at: new Date().toISOString(), reminder_count: $json.reminder_count + 1, status: \"reminded\" } }}",
+                                         "options":  {
+                                                         "timeout":  30000
+                                                     }
+                                     },
+                      "id":  "patch-reminder",
+                      "name":  "Callback backend - Marquer relance",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       180,
+                                       720
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const item = $input.first().json;\nconsole.log(JSON.stringify({\n  event: \u0027rps_reminder_sent\u0027,\n  participant_id: item.participant_id,\n  campaign_id: item.campaign_id,\n  email: item.email,\n  timestamp: new Date().toISOString()\n}));\nreturn [{ json: { success: true, participant_id: item.participant_id, email: item.email } }];"
+                                     },
+                      "id":  "log-reminder",
+                      "name":  "Log - Relance terminée",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       460,
+                                       720
+                                   ]
+                  }
+              ],
+    "pinData":  {
+
+                },
+    "connections":  {
+                        "Webhook - Analyse RPS":  {
+                                                      "main":  [
+                                                                   {
+                                                                       "node":  "Normaliser payload analyse",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                  },
+                        "Normaliser payload analyse":  {
+                                                           "main":  [
+                                                                        {
+                                                                            "node":  "Préparer contexte IA",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                       },
+                        "Préparer contexte IA":  {
+                                                     "main":  [
+                                                                  {
+                                                                      "node":  "Analyse IA RPS",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                 },
+                        "Mistral Cloud Chat Model":  {
+                                                         "ai_languageModel":  [
+                                                                                  {
+                                                                                      "node":  "Analyse IA RPS",
+                                                                                      "type":  "ai_languageModel",
+                                                                                      "index":  0
+                                                                                  }
+                                                                              ]
+                                                     },
+                        "Analyse IA RPS":  {
+                                               "main":  [
+                                                            {
+                                                                "node":  "Générer DOCX réel",
+                                                                "type":  "main",
+                                                                "index":  0
+                                                            }
+                                                        ]
+                                           },
+                        "Générer DOCX réel":  {
+                                                  "main":  [
+                                                               {
+                                                                   "node":  "Drive - Créer dossier racine",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                              },
+                        "Drive - Créer dossier entreprise":  {
+                                                                 "main":  [
+                                                                              {
+                                                                                  "node":  "Drive - Créer dossier campagne",
+                                                                                  "type":  "main",
+                                                                                  "index":  0
+                                                                              }
+                                                                          ]
+                                                             },
+                        "Drive - Créer dossier campagne":  {
+                                                               "main":  [
+                                                                            {
+                                                                                "node":  "Réattacher DOCX",
+                                                                                "type":  "main",
+                                                                                "index":  0
+                                                                            }
+                                                                        ]
+                                                           },
+                        "Réattacher DOCX":  {
+                                                "main":  [
+                                                             {
+                                                                 "node":  "Drive - Upload DOCX",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                            },
+                        "Drive - Upload DOCX":  {
+                                                    "main":  [
+                                                                 {
+                                                                     "node":  "Préparer email et callback",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                },
+                        "Préparer email et callback":  {
+                                                           "main":  [
+                                                                        {
+                                                                            "node":  "Email - Envoyer rapport",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                       },
+                        "Email - Envoyer rapport":  {
+                                                        "main":  [
+                                                                     {
+                                                                         "node":  "Callback backend - Enregistrer rapport",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                    },
+                        "Callback backend - Enregistrer rapport":  {
+                                                                       "main":  [
+                                                                                    {
+                                                                                        "node":  "Log - Rapport terminé",
+                                                                                        "type":  "main",
+                                                                                        "index":  0
+                                                                                    }
+                                                                                ]
+                                                                   },
+                        "Déclencheur relances quotidiennes":  {
+                                                                  "main":  [
+                                                                               {
+                                                                                   "node":  "Préparer campagnes relance",
+                                                                                   "type":  "main",
+                                                                                   "index":  0
+                                                                               }
+                                                                           ]
+                                                              },
+                        "Préparer campagnes relance":  {
+                                                           "main":  [
+                                                                        {
+                                                                            "node":  "Backend - Participants à relancer",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                       },
+                        "Backend - Participants à relancer":  {
+                                                                  "main":  [
+                                                                               {
+                                                                                   "node":  "Filtrer relances éligibles",
+                                                                                   "type":  "main",
+                                                                                   "index":  0
+                                                                               }
+                                                                           ]
+                                                              },
+                        "Filtrer relances éligibles":  {
+                                                           "main":  [
+                                                                        {
+                                                                            "node":  "Email - Envoyer relance",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                       },
+                        "Email - Envoyer relance":  {
+                                                        "main":  [
+                                                                     {
+                                                                         "node":  "Callback backend - Marquer relance",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                    },
+                        "Callback backend - Marquer relance":  {
+                                                                   "main":  [
+                                                                                {
+                                                                                    "node":  "Log - Relance terminée",
+                                                                                    "type":  "main",
+                                                                                    "index":  0
+                                                                                }
+                                                                            ]
+                                                               },
+                        "Drive - Créer dossier racine":  {
+                                                             "main":  [
+                                                                          {
+                                                                              "node":  "Drive - Créer dossier entreprise",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                         }
+                    },
+    "active":  false,
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "availableInMCP":  false,
+                     "saveExecutionProgress":  true,
+                     "saveManualExecutions":  true
+                 },
+    "versionId":  "production-refactor-2026-05-18",
+    "meta":  {
+                 "templateCredsSetupCompleted":  true
+             },
+    "tags":  [
+
+             ]
+}

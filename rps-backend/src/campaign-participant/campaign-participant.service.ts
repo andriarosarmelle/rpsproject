@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { Campaign } from '../campaign/campaign.entity';
 import { parseCsvDocument } from '../common/csv.util';
 import { throwPersistenceError } from '../common/database-error.util';
+import { SendGridMailService } from '../email/sendgrid-mail.service';
 import { Employee } from '../employee/employee.entity';
 import { Question } from '../question/question.entity';
 import { SurveyResponse } from '../response/response.entity';
@@ -21,6 +23,8 @@ import {
   CreateCampaignParticipantDto,
   ImportCampaignEmployeeRowDto,
   ImportCampaignEmployeesDto,
+  MarkParticipantReminderDto,
+  SendCampaignInvitationsDto,
   SendCampaignRemindersDto,
   SubmitCampaignResponsesDto,
   UpdateCampaignParticipantDto,
@@ -42,6 +46,7 @@ export class CampaignParticipantService {
     @InjectRepository(Campaign)
     private readonly campaignRepository: Repository<Campaign>,
     private readonly dataSource: DataSource,
+    private readonly sendGridMailService: SendGridMailService,
   ) {}
 
   private static normalizeCompanyName(value?: string | null) {
@@ -615,7 +620,7 @@ export class CampaignParticipantService {
                 campaign,
                 employee,
                 participation_token: randomUUID(),
-                invitation_sent_at: payload.invitation_sent_at ?? new Date(),
+                invitation_sent_at: payload.invitation_sent_at ?? null,
                 reminder_sent_at: null,
                 completed_at: null,
                 status: CampaignParticipantStatus.PENDING,
@@ -767,6 +772,130 @@ export class CampaignParticipantService {
     }
   }
 
+  async sendInvitations(
+    campaignId: number,
+    options: SendCampaignInvitationsDto = {},
+  ) {
+    const campaign = await this.findCampaignOrThrow(campaignId);
+
+    if (campaign.status !== 'active') {
+      throw new BadRequestException('Le sondage doit etre active avant envoi.');
+    }
+
+    const participants = await this.campaignParticipantRepository.find({
+      where: {
+        campaign: { id: campaignId },
+        employee: { deleted_at: IsNull() },
+      },
+      relations: { employee: true },
+      order: { id: 'ASC' },
+    });
+
+    await this.ensureParticipationTokens(participants);
+
+    if (!participants.length) {
+      throw new BadRequestException(
+        "Importez des employes avant d'envoyer les invitations.",
+      );
+    }
+
+    const eligibleParticipants = participants.filter((participant) => {
+      if (participant.status === CampaignParticipantStatus.COMPLETED) {
+        return false;
+      }
+
+      if (!participant.employee?.email?.trim()) {
+        return false;
+      }
+
+      return options.force || !participant.invitation_sent_at;
+    });
+
+    const skippedCount = participants.length - eligibleParticipants.length;
+
+    if (!eligibleParticipants.length) {
+      return {
+        success: true,
+        campaign_id: campaignId,
+        sent_count: 0,
+        skipped_count: skippedCount,
+        participants: [],
+        message: 'Aucune nouvelle invitation a envoyer.',
+      };
+    }
+
+    const appUrl = this.resolvePublicAppUrl(options.app_url);
+    const campaignName = campaign.name?.trim() || `Campagne ${campaign.id}`;
+    const companyName =
+      campaign.company.name?.trim() || `Entreprise ${campaign.company.id}`;
+    const recipients = eligibleParticipants.map((participant) => {
+      const email = (participant.employee.email ?? '').trim().toLowerCase();
+      const firstName = participant.employee.first_name?.trim() || '';
+      const lastName = participant.employee.last_name?.trim() || '';
+      const name = `${firstName} ${lastName}`.trim() || email;
+
+      return {
+        participant_id: participant.id,
+        employee_id: participant.employee.id,
+        email,
+        name,
+        survey_url: `${appUrl}/survey-response/${participant.participation_token}`,
+        campaign_name: campaignName,
+        company_name: companyName,
+      };
+    });
+
+    const sendGridResult =
+      await this.sendGridMailService.sendSurveyInvitations(recipients);
+
+    if (!sendGridResult.sent.length) {
+      throw new InternalServerErrorException(
+        "Aucune invitation n'a pu etre envoyee via SendGrid.",
+      );
+    }
+
+    const sentParticipantIds = new Set(
+      sendGridResult.sent.map((recipient) => recipient.participant_id),
+    );
+    const sentParticipants = eligibleParticipants.filter((participant) =>
+      sentParticipantIds.has(participant.id),
+    );
+
+    const invitationDate = new Date();
+    for (const participant of sentParticipants) {
+      participant.invitation_sent_at = invitationDate;
+    }
+
+    try {
+      await this.campaignParticipantRepository.save(sentParticipants);
+    } catch (error) {
+      throwPersistenceError(error, {
+        defaultMessage: 'Failed to update invitation send timestamps',
+      });
+    }
+
+    return {
+      success: sendGridResult.failed.length === 0,
+      campaign_id: campaignId,
+      sent_count: sendGridResult.sent.length,
+      failed_count: sendGridResult.failed.length,
+      skipped_count: skippedCount,
+      invitations_sent_at: invitationDate,
+      sendgrid_result: {
+        failed: sendGridResult.failed.map((item) => ({
+          participant_id: item.recipient.participant_id,
+          email: item.recipient.email,
+          error: item.error,
+        })),
+      },
+      participants: sendGridResult.sent.map((recipient) => ({
+        participant_id: recipient.participant_id,
+        email: recipient.email,
+        survey_url: recipient.survey_url,
+      })),
+    };
+  }
+
   async sendReminders(
     campaignId: number,
     options: SendCampaignRemindersDto = {},
@@ -803,6 +932,7 @@ export class CampaignParticipantService {
 
     for (const participant of pendingParticipants) {
       participant.reminder_sent_at = reminderDate;
+      participant.reminder_count = (participant.reminder_count ?? 0) + 1;
       participant.status = CampaignParticipantStatus.REMINDED;
     }
 
@@ -813,6 +943,84 @@ export class CampaignParticipantService {
       minimum_days_since_invitation: thresholdDays,
       reminded_count: pendingParticipants.length,
       reminded_participants: pendingParticipants,
+    };
+  }
+
+  async getPendingReminders(campaignId: number) {
+    const campaign = await this.findCampaignOrThrow(campaignId);
+    const participants = await this.campaignParticipantRepository.find({
+      where: {
+        campaign: { id: campaignId },
+        employee: { deleted_at: IsNull() },
+      },
+      relations: { employee: true },
+      order: { id: 'ASC' },
+    });
+
+    await this.ensureParticipationTokens(participants);
+
+    const appUrl = this.resolvePublicAppUrl();
+    const pendingParticipants = participants.filter(
+      (participant) =>
+        participant.status !== CampaignParticipantStatus.COMPLETED,
+    );
+
+    return {
+      campaign_id: campaignId,
+      campaign_name: campaign.name,
+      company_name: campaign.company?.name ?? 'Entreprise',
+      participants: pendingParticipants.map((participant) => {
+        const firstName = participant.employee.first_name?.trim() || '';
+        const lastName = participant.employee.last_name?.trim() || '';
+        const name =
+          `${firstName} ${lastName}`.trim() ||
+          participant.employee.email ||
+          `Participant ${participant.id}`;
+
+        return {
+          participant_id: participant.id,
+          nom: name,
+          email: participant.employee.email,
+          survey_url: `${appUrl}/survey-response/${participant.participation_token}`,
+          invitation_sent_at: participant.invitation_sent_at,
+          reminder_sent_at: participant.reminder_sent_at,
+          reminder_count: participant.reminder_count ?? 0,
+          status: participant.status,
+        };
+      }),
+    };
+  }
+
+  async markReminderSent(
+    participantId: number,
+    payload: MarkParticipantReminderDto = {},
+  ) {
+    const participant = await this.findOne(participantId);
+
+    if (participant.status === CampaignParticipantStatus.COMPLETED) {
+      return {
+        updated: false,
+        participant_id: participant.id,
+        status: participant.status,
+        message: 'Participant already completed',
+      };
+    }
+
+    participant.reminder_sent_at = payload.reminder_sent_at
+      ? new Date(payload.reminder_sent_at)
+      : new Date();
+    participant.reminder_count =
+      payload.reminder_count ?? (participant.reminder_count ?? 0) + 1;
+    participant.status = CampaignParticipantStatus.REMINDED;
+
+    const saved = await this.campaignParticipantRepository.save(participant);
+
+    return {
+      updated: true,
+      participant_id: saved.id,
+      reminder_sent_at: saved.reminder_sent_at,
+      reminder_count: saved.reminder_count,
+      status: saved.status,
     };
   }
 
@@ -848,6 +1056,23 @@ export class CampaignParticipantService {
         'Employee must belong to the same company as the campaign',
       );
     }
+  }
+
+  private resolvePublicAppUrl(value?: string | null) {
+    const configuredUrl =
+      value?.trim() ||
+      process.env.APP_URL?.trim() ||
+      process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+      'http://127.0.0.1:3001';
+    const normalizedUrl = configuredUrl.replace(/\/+$/, '');
+
+    if (!/^https?:\/\/[^/]+/i.test(normalizedUrl)) {
+      throw new BadRequestException(
+        "L'URL publique de l'application doit commencer par http:// ou https://",
+      );
+    }
+
+    return normalizedUrl;
   }
 
   private parseCsv(csv: string): ImportCampaignEmployeeRowDto[] {

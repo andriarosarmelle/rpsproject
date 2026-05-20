@@ -7,8 +7,10 @@ import { SurveyResponse } from '../response/response.entity';
 import { CampaignParticipantController } from './campaign-participant.controller';
 import { CampaignParticipant } from './campaign-participant.entity';
 import { CampaignParticipantService } from './campaign-participant.service';
+import { ParticipantAutomationController } from './participant-automation.controller';
 import { AuthModule } from '../auth/auth.module';
 import { CampaignModule } from '../campaign/campaign.module';
+import { SendGridMailService } from '../email/sendgrid-mail.service';
 
 @Module({
   imports: [
@@ -22,8 +24,8 @@ import { CampaignModule } from '../campaign/campaign.module';
     AuthModule,
     CampaignModule,
   ],
-  controllers: [CampaignParticipantController],
-  providers: [CampaignParticipantService],
+  controllers: [CampaignParticipantController, ParticipantAutomationController],
+  providers: [CampaignParticipantService, SendGridMailService],
   exports: [TypeOrmModule, CampaignParticipantService],
 })
 export class CampaignParticipantModule {}
